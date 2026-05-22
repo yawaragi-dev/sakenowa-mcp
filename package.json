@@ -1,0 +1,32 @@
+{
+  "name": "@yawaragi/sakenowa-mcp",
+  "version": "0.0.1",
+  "description": "Model Context Protocol server for Sakenowa sake data. In development.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "sake",
+    "sakenowa",
+    "japanese-sake"
+  ],
+  "author": "Borys Vengerov",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yawaragi-dev/sakenowa-mcp.git"
+  },
+  "homepage": "https://github.com/yawaragi-dev/sakenowa-mcp#readme",
+  "bugs": {
+    "url": "https://github.com/yawaragi-dev/sakenowa-mcp/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "files": [
+    "README.md",
+    "LICENSE"
+  ],
+  "dependencies": {
+    "license": "^1.0.3"
+  }
+}

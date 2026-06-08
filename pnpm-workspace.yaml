@@ -1,0 +1,8 @@
+# esbuild is required by tsx and vitest; approve its postinstall build.
+# The optional native builds pulled in transitively by testcontainers
+# (ssh2/cpu-features/protobufjs) are not needed and stay unbuilt.
+allowBuilds:
+  cpu-features: false
+  esbuild: true
+  protobufjs: false
+  ssh2: false

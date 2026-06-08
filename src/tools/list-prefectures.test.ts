@@ -4,17 +4,18 @@ import { listPrefectures } from './list-prefectures.js';
 
 describe('listPrefectures', () => {
   it('returns prefectures in the expected shape from a stubbed Db', async () => {
+    // The exclude-areaId-0 and ORDER BY behaviour is verified end-to-end in the
+    // integration test against real Postgres; here we only assert the query
+    // function returns the parsed Prefecture shape, without coupling to the SQL
+    // string.
     const stub: Db = {
-      query: <R>(sql: string) => {
-        expect(sql).toContain('FROM prefectures');
-        expect(sql).toContain('id <> 0');
-        expect(sql).toContain('ORDER BY id');
-        const rows = [
-          { id: 1, name_ja: '北海道', name_romaji: 'Hokkaido' },
-          { id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' },
-        ];
-        return Promise.resolve({ rows: rows as R[] });
-      },
+      query: <R>() =>
+        Promise.resolve({
+          rows: [
+            { id: 1, name_ja: '北海道', name_romaji: 'Hokkaido' },
+            { id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' },
+          ] as R[],
+        }),
     };
 
     const result = await listPrefectures({}, stub);

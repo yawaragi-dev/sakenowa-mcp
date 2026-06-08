@@ -35,7 +35,10 @@ export function createLogger(level: LogLevel = resolveLevel(process.env['MCP_LOG
   const threshold = rank(level);
 
   function write(at: LogLevel, message: string): void {
-    if (threshold >= rank(at) && threshold > rank('silent')) {
+    // `write` is only ever called with error/info/debug (rank >= 1), so a
+    // `silent` threshold (rank 0) already fails this guard — no extra check
+    // for it is needed.
+    if (threshold >= rank(at)) {
       process.stderr.write(`[sakenowa-mcp] ${at}: ${message}\n`);
     }
   }

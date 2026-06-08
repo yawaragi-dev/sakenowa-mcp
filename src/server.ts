@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
   CallToolRequestSchema,
@@ -10,11 +11,19 @@ import {
   LIST_PREFECTURES_DESCRIPTION,
   LIST_PREFECTURES_NAME,
   ListPrefecturesInputSchema,
+  ListPrefecturesStructuredSchema,
   listPrefectures,
 } from './tools/list-prefectures.js';
 
+// Single source of version truth: read package.json rather than duplicating
+// the version here (npm always ships package.json alongside dist/). Resolves
+// to the repo-root package.json from both src/ (tsx) and dist/.
+const packageJson = JSON.parse(
+  readFileSync(new URL('../package.json', import.meta.url), 'utf8'),
+) as { version: string };
+
 export const SERVER_NAME = '@yawaragi/sakenowa-mcp';
-export const SERVER_VERSION = '0.0.1';
+export const SERVER_VERSION = packageJson.version;
 
 /**
  * Build the MCP server with all tools wired to the given `Db`. The transport
@@ -35,6 +44,9 @@ export function createServer(db: Db, logger: Logger): Server {
           name: LIST_PREFECTURES_NAME,
           description: LIST_PREFECTURES_DESCRIPTION,
           inputSchema: zodToJsonSchema(ListPrefecturesInputSchema, {
+            target: 'jsonSchema7',
+          }) as Record<string, unknown>,
+          outputSchema: zodToJsonSchema(ListPrefecturesStructuredSchema, {
             target: 'jsonSchema7',
           }) as Record<string, unknown>,
         },

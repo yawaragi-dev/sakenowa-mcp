@@ -19,6 +19,15 @@ export const ListPrefecturesInputSchema = z.object({}).strict();
 
 export const ListPrefecturesOutputSchema = z.array(PrefectureSchema);
 
+/**
+ * Structured-content wrapper advertised as the tool's `outputSchema` and
+ * returned as `structuredContent`. MCP clients that validate structured
+ * results check the payload against this shape.
+ */
+export const ListPrefecturesStructuredSchema = z.object({
+  prefectures: ListPrefecturesOutputSchema,
+});
+
 interface PrefectureRow {
   id: number;
   name_ja: string;

@@ -14,6 +14,13 @@ import {
   ListPrefecturesStructuredSchema,
   listPrefectures,
 } from './tools/list-prefectures.js';
+import {
+  SEARCH_SAKES_BY_NAME_DESCRIPTION,
+  SEARCH_SAKES_BY_NAME_NAME,
+  SearchSakesByNameInputSchema,
+  SearchSakesByNameStructuredSchema,
+  searchSakesByName,
+} from './tools/search-sakes-by-name.js';
 
 // Single source of version truth: read package.json rather than duplicating
 // the version here (npm always ships package.json alongside dist/). Resolves
@@ -50,6 +57,16 @@ export function createServer(db: Db, logger: Logger): Server {
             target: 'jsonSchema7',
           }) as Record<string, unknown>,
         },
+        {
+          name: SEARCH_SAKES_BY_NAME_NAME,
+          description: SEARCH_SAKES_BY_NAME_DESCRIPTION,
+          inputSchema: zodToJsonSchema(SearchSakesByNameInputSchema, {
+            target: 'jsonSchema7',
+          }) as Record<string, unknown>,
+          outputSchema: zodToJsonSchema(SearchSakesByNameStructuredSchema, {
+            target: 'jsonSchema7',
+          }) as Record<string, unknown>,
+        },
       ],
     };
   });
@@ -57,40 +74,70 @@ export function createServer(db: Db, logger: Logger): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
 
-    if (name !== LIST_PREFECTURES_NAME) {
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
-      };
+    if (name === LIST_PREFECTURES_NAME) {
+      const parsed = ListPrefecturesInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return {
+          isError: true,
+          content: [
+            { type: 'text' as const, text: `Invalid arguments: ${parsed.error.message}` },
+          ],
+        };
+      }
+
+      try {
+        const prefectures = await listPrefectures(parsed.data, db);
+        logger.debug(`list_prefectures returned ${String(prefectures.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(prefectures) }],
+          structuredContent: { prefectures },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`list_prefectures failed: ${message}`);
+        return {
+          isError: true,
+          content: [
+            { type: 'text' as const, text: `Failed to list prefectures: ${message}` },
+          ],
+        };
+      }
     }
 
-    const parsed = ListPrefecturesInputSchema.safeParse(rawArgs ?? {});
-    if (!parsed.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text' as const, text: `Invalid arguments: ${parsed.error.message}` },
-        ],
-      };
+    if (name === SEARCH_SAKES_BY_NAME_NAME) {
+      const parsed = SearchSakesByNameInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return {
+          isError: true,
+          content: [
+            { type: 'text' as const, text: `Invalid arguments: ${parsed.error.message}` },
+          ],
+        };
+      }
+
+      try {
+        const sakes = await searchSakesByName(parsed.data, db);
+        logger.debug(`search_sakes_by_name returned ${String(sakes.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(sakes) }],
+          structuredContent: { sakes },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`search_sakes_by_name failed: ${message}`);
+        return {
+          isError: true,
+          content: [
+            { type: 'text' as const, text: `Failed to search sakes: ${message}` },
+          ],
+        };
+      }
     }
 
-    try {
-      const prefectures = await listPrefectures(parsed.data, db);
-      logger.debug(`list_prefectures returned ${String(prefectures.length)} rows`);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(prefectures) }],
-        structuredContent: { prefectures },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`list_prefectures failed: ${message}`);
-      return {
-        isError: true,
-        content: [
-          { type: 'text' as const, text: `Failed to list prefectures: ${message}` },
-        ],
-      };
-    }
+    return {
+      isError: true,
+      content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
+    };
   });
 
   return server;

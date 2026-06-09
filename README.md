@@ -6,7 +6,7 @@ Connect it to Claude Desktop, the AI SDK's MCP client, or any other MCP consumer
 
 The server is **read-only**, **stateless**, and intentionally domain-pure — no LLM calls, no cross-beverage heuristics, no user identity, no business logic. The OSS asset's value is its independence: any consumer that mirrors Sakenowa data into Postgres can plug this in.
 
-> **Status:** v0.1.0 in development. The current scope is captured in [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). Open issues on GitHub track the implementation slices. Star the repo to follow progress.
+> **Status:** v0.1.0 released — all six tools below are implemented and on npm. See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md) for the full contract.
 
 ## What's in v0.1.0
 

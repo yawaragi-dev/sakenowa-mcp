@@ -6,23 +6,23 @@ import type { Sake } from './sake.js';
  * the same nested Sake shape and would otherwise each re-derive these JOINs and
  * the row→object mapping.
  *
- * This is a thin SQL/mapping helper, deliberately NOT a repository or query
- * builder. It owns exactly two things:
+ * A thin SQL/mapping helper, deliberately NOT a repository or query builder. It
+ * is exposed as composable pieces so callers that need *extra* columns or joins
+ * (e.g. find_similar_sakes adds the six FlavorProfile columns + a cosine
+ * expression and a `flavor_profiles` join) can splice them in:
  *
- *  - {@link SAKE_SELECT_JOIN}: the SELECT list (aliased to a flat row) plus the
- *    FROM/JOIN clause. Callers append their own WHERE / ORDER BY / LIMIT and
- *    bind their own parameters; this fragment introduces no placeholders, so it
- *    composes cleanly regardless of a caller's parameter numbering.
- *  - {@link mapSakeRow}: turns one flat {@link SakeJoinRow} into the nested
- *    {@link Sake} shape. The Zod parse stays at each tool's output boundary, not
- *    here, so this helper carries no validation policy.
+ *   `SELECT ${SAKE_COLUMNS}, <extra cols> FROM ${SAKE_FROM} JOIN <extra> ...`
  *
- * The prefecture is the Brewery's prefecture (a Sake has no prefecture of its
- * own). Columns are hard-coded from docs/specs/v0.1.0.md "Expected DB schema";
- * a column-remapping layer is a deferred v0.2 concern.
+ * Callers that need nothing extra use {@link SAKE_SELECT_JOIN} directly and
+ * append their own WHERE / ORDER BY / LIMIT. No bind placeholders are
+ * introduced, so a caller's parameter numbering is unconstrained. The base
+ * table is aliased `s` (sakes), the brewery `b`, the prefecture `p`. The
+ * prefecture is the Brewery's prefecture (a Sake has no prefecture of its own).
+ * Columns are hard-coded from docs/specs/v0.1.0.md "Expected DB schema"; a
+ * column-remapping layer is a deferred v0.2 concern.
  */
 
-/** Flat row shape produced by {@link SAKE_SELECT_JOIN}. */
+/** Flat row shape produced by {@link SAKE_COLUMNS} / {@link SAKE_SELECT_JOIN}. */
 export interface SakeJoinRow {
   id: number;
   name_ja: string;
@@ -36,14 +36,10 @@ export interface SakeJoinRow {
 }
 
 /**
- * SELECT list + FROM/JOIN clause for the canonical Sake join. Aliased so every
- * field of {@link SakeJoinRow} is present exactly once. Append a `WHERE` /
- * `ORDER BY` / `LIMIT` to build a complete statement. The base table is exposed
- * as `s` (sakes), the brewery as `b`, the prefecture as `p` for callers that
- * need to reference them in their own clauses.
+ * Aliased SELECT column list for the canonical Sake join — no leading `SELECT`,
+ * no trailing comma — so callers can append further columns after it.
  */
-export const SAKE_SELECT_JOIN = `
-  SELECT
+export const SAKE_COLUMNS = `
     s.id                  AS id,
     s.name_ja             AS name_ja,
     s.name_romaji         AS name_romaji,
@@ -52,10 +48,24 @@ export const SAKE_SELECT_JOIN = `
     b.name_romaji         AS brewery_name_romaji,
     p.id                  AS prefecture_id,
     p.name_ja             AS prefecture_name_ja,
-    p.name_romaji         AS prefecture_name_romaji
-  FROM sakes s
+    p.name_romaji         AS prefecture_name_romaji`;
+
+/**
+ * Table + JOIN clause for the canonical Sake join — no leading `FROM` keyword,
+ * so callers can append further joins after it (`FROM ${SAKE_FROM} JOIN ...`).
+ */
+export const SAKE_FROM = `
+  sakes s
   JOIN breweries b   ON b.id = s.brewery_id
-  JOIN prefectures p ON p.id = b.prefecture_id
+  JOIN prefectures p ON p.id = b.prefecture_id`;
+
+/**
+ * Complete `SELECT … FROM … JOIN …` for tools that need no extra columns or
+ * joins. Append a `WHERE` / `ORDER BY` / `LIMIT` to finish the statement.
+ */
+export const SAKE_SELECT_JOIN = `
+  SELECT ${SAKE_COLUMNS}
+  FROM ${SAKE_FROM}
 `;
 
 /** Map one flat join row into the nested {@link Sake} shape. */

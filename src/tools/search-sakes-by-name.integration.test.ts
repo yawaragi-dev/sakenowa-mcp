@@ -76,13 +76,22 @@ describe.skipIf(!hasDocker)('search_sakes_by_name (integration, testcontainers P
     );
     // Dassai (Yamaguchi), Kubota (Niigata), and a same-romaji colliding pair:
     // two distinct Sakes both romanised "Asahi" from different breweries.
+    //
+    // For the prefix-vs-substring ranking test, the romaji matters:
+    //   3,4 'Asahi', 5 'Asahiyama', 7 'Asahimidori' all START WITH "asahi"
+    //     -> exact-prefix matches.
+    //   6 'Yamaasahi' merely CONTAINS "asahi" -> substring-only match.
+    // Note id 6 < id 7: under plain id-order 6 would precede 7, so asserting
+    // 7 (prefix) before 6 (substring) proves the ranking, not the id tiebreak.
     await pool.query(
       `INSERT INTO sakes (id, name_ja, name_romaji, brewery_id) VALUES
-        (1, '獺祭',     'Dassai',     100),
-        (2, '久保田',   'Kubota',     300),
-        (3, '朝日',     'Asahi',      100),
-        (4, '旭',       'Asahi',      200),
-        (5, '朝日山',   'Asahiyama',  200)`,
+        (1, '獺祭',       'Dassai',       100),
+        (2, '久保田',     'Kubota',       300),
+        (3, '朝日',       'Asahi',        100),
+        (4, '旭',         'Asahi',        200),
+        (5, '朝日山',     'Asahiyama',    200),
+        (6, '山旭',       'Yamaasahi',    200),
+        (7, '旭緑',       'Asahimidori',  100)`,
     );
   });
 
@@ -113,13 +122,15 @@ describe.skipIf(!hasDocker)('search_sakes_by_name (integration, testcontainers P
   });
 
   it('ranks exact-prefix matches ahead of substring-only matches', async () => {
-    // "Asahi" is an exact-prefix of sakes 3 & 4 and a substring of 5
-    // ("Asahiyama"). Prefix matches sort first; within them, id ASC.
+    // Prefix matches: 3,4 'Asahi', 5 'Asahiyama', 7 'Asahimidori'.
+    // Substring-only: 6 'Yamaasahi'.
+    // Expected: prefixes first by id ASC (3,4,5,7), then the substring (6).
+    // Crucially id 6 < id 7, so a pure id-ASC ordering would yield
+    // [3,4,5,6,7]; the assertion below only holds if the ranking puts the
+    // substring match last.
     const result = await searchSakesByName({ query: 'asahi' }, pool);
 
-    const ids = result.map((s) => s.id);
-    // 3 and 4 (prefix) precede 5 (substring); 3 before 4 by id.
-    expect(ids).toEqual([3, 4, 5]);
+    expect(result.map((s) => s.id)).toEqual([3, 4, 5, 7, 6]);
   });
 
   it('returns the same-romaji colliding pair, each with its own brewery + prefecture', async () => {
@@ -143,7 +154,8 @@ describe.skipIf(!hasDocker)('search_sakes_by_name (integration, testcontainers P
 
   it('clamps limit above the maximum to 50', async () => {
     const result = await searchSakesByName({ query: 'asahi', limit: 999 }, pool);
-    // Only 3 rows match; clamping must not error and must still return them.
-    expect(result.map((s) => s.id)).toEqual([3, 4, 5]);
+    // All five "asahi" matches come back (well under the 50 ceiling); clamping
+    // must not error, and the ranked order is preserved.
+    expect(result.map((s) => s.id)).toEqual([3, 4, 5, 7, 6]);
   });
 });

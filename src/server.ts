@@ -8,6 +8,13 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Db } from './db.js';
 import type { Logger } from './logger.js';
 import {
+  FIND_SIMILAR_SAKES_DESCRIPTION,
+  FIND_SIMILAR_SAKES_NAME,
+  FindSimilarSakesInputSchema,
+  FindSimilarSakesStructuredSchema,
+  findSimilarSakes,
+} from './tools/find-similar-sakes.js';
+import {
   LIST_PREFECTURES_DESCRIPTION,
   LIST_PREFECTURES_NAME,
   ListPrefecturesInputSchema,
@@ -24,6 +31,19 @@ const packageJson = JSON.parse(
 
 export const SERVER_NAME = '@yawaragi/sakenowa-mcp';
 export const SERVER_VERSION = packageJson.version;
+
+/** Shared `isError` MCP response for a failed tool call. */
+function toolError(text: string) {
+  return {
+    isError: true,
+    content: [{ type: 'text' as const, text }],
+  };
+}
+
+/** Shared `isError` MCP response for arguments that fail Zod parsing. */
+function invalidArguments(message: string) {
+  return toolError(`Invalid arguments: ${message}`);
+}
 
 /**
  * Build the MCP server with all tools wired to the given `Db`. The transport
@@ -50,6 +70,16 @@ export function createServer(db: Db, logger: Logger): Server {
             target: 'jsonSchema7',
           }) as Record<string, unknown>,
         },
+        {
+          name: FIND_SIMILAR_SAKES_NAME,
+          description: FIND_SIMILAR_SAKES_DESCRIPTION,
+          inputSchema: zodToJsonSchema(FindSimilarSakesInputSchema, {
+            target: 'jsonSchema7',
+          }) as Record<string, unknown>,
+          outputSchema: zodToJsonSchema(FindSimilarSakesStructuredSchema, {
+            target: 'jsonSchema7',
+          }) as Record<string, unknown>,
+        },
       ],
     };
   });
@@ -57,40 +87,45 @@ export function createServer(db: Db, logger: Logger): Server {
   server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: rawArgs } = request.params;
 
-    if (name !== LIST_PREFECTURES_NAME) {
-      return {
-        isError: true,
-        content: [{ type: 'text' as const, text: `Unknown tool: ${name}` }],
-      };
+    if (name === LIST_PREFECTURES_NAME) {
+      const parsed = ListPrefecturesInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const prefectures = await listPrefectures(parsed.data, db);
+        logger.debug(`list_prefectures returned ${String(prefectures.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(prefectures) }],
+          structuredContent: { prefectures },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`list_prefectures failed: ${message}`);
+        return toolError(`Failed to list prefectures: ${message}`);
+      }
     }
 
-    const parsed = ListPrefecturesInputSchema.safeParse(rawArgs ?? {});
-    if (!parsed.success) {
-      return {
-        isError: true,
-        content: [
-          { type: 'text' as const, text: `Invalid arguments: ${parsed.error.message}` },
-        ],
-      };
+    if (name === FIND_SIMILAR_SAKES_NAME) {
+      const parsed = FindSimilarSakesInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const similarSakes = await findSimilarSakes(parsed.data, db);
+        logger.debug(`find_similar_sakes returned ${String(similarSakes.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(similarSakes) }],
+          structuredContent: { similar_sakes: similarSakes },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`find_similar_sakes failed: ${message}`);
+        return toolError(`Failed to find similar sakes: ${message}`);
+      }
     }
 
-    try {
-      const prefectures = await listPrefectures(parsed.data, db);
-      logger.debug(`list_prefectures returned ${String(prefectures.length)} rows`);
-      return {
-        content: [{ type: 'text' as const, text: JSON.stringify(prefectures) }],
-        structuredContent: { prefectures },
-      };
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      logger.error(`list_prefectures failed: ${message}`);
-      return {
-        isError: true,
-        content: [
-          { type: 'text' as const, text: `Failed to list prefectures: ${message}` },
-        ],
-      };
-    }
+    return toolError(`Unknown tool: ${name}`);
   });
 
   return server;

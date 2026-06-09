@@ -35,7 +35,7 @@ describe('createServer tools/list', () => {
     await server.close();
   });
 
-  it('only advertises list_prefectures in this slice', async () => {
+  it('advertises find_similar_sakes with FlavorProfile vocabulary (not "vector")', async () => {
     const server = createServer(emptyDb(), createLogger('silent'));
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
 
@@ -46,7 +46,34 @@ describe('createServer tools/list', () => {
     ]);
 
     const { tools } = await client.listTools();
-    expect(tools.map((t) => t.name)).toEqual(['list_prefectures']);
+
+    const findSimilar = tools.find((t) => t.name === 'find_similar_sakes');
+    expect(findSimilar).toBeDefined();
+    expect(findSimilar?.outputSchema).toBeDefined();
+
+    const description = findSimilar?.description ?? '';
+    // Uses CONTEXT.md vocabulary: "FlavorProfile", never "vector".
+    expect(description).toContain('FlavorProfile');
+    expect(description.toLowerCase()).not.toContain('vector');
+
+    await client.close();
+    await server.close();
+  });
+
+  it('advertises exactly the tools shipped so far in this slice', async () => {
+    const server = createServer(emptyDb(), createLogger('silent'));
+    const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+
+    const client = new Client({ name: 'test-client', version: '0.0.0' });
+    await Promise.all([
+      server.connect(serverTransport),
+      client.connect(clientTransport),
+    ]);
+
+    const { tools } = await client.listTools();
+    expect(tools.map((t) => t.name).sort()).toEqual(
+      ['find_similar_sakes', 'list_prefectures'].sort(),
+    );
 
     await client.close();
     await server.close();

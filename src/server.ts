@@ -21,6 +21,13 @@ import {
   ListPrefecturesStructuredSchema,
   listPrefectures,
 } from './tools/list-prefectures.js';
+import {
+  SEARCH_SAKES_BY_NAME_DESCRIPTION,
+  SEARCH_SAKES_BY_NAME_NAME,
+  SearchSakesByNameInputSchema,
+  SearchSakesByNameStructuredSchema,
+  searchSakesByName,
+} from './tools/search-sakes-by-name.js';
 
 // Single source of version truth: read package.json rather than duplicating
 // the version here (npm always ships package.json alongside dist/). Resolves
@@ -31,6 +38,11 @@ const packageJson = JSON.parse(
 
 export const SERVER_NAME = '@yawaragi/sakenowa-mcp';
 export const SERVER_VERSION = packageJson.version;
+
+/** Convert a Zod schema into the JSON Schema shape MCP advertises. */
+function jsonSchema(schema: Parameters<typeof zodToJsonSchema>[0]): Record<string, unknown> {
+  return zodToJsonSchema(schema, { target: 'jsonSchema7' });
+}
 
 /** Shared `isError` MCP response for a failed tool call. */
 function toolError(text: string) {
@@ -63,22 +75,20 @@ export function createServer(db: Db, logger: Logger): Server {
         {
           name: LIST_PREFECTURES_NAME,
           description: LIST_PREFECTURES_DESCRIPTION,
-          inputSchema: zodToJsonSchema(ListPrefecturesInputSchema, {
-            target: 'jsonSchema7',
-          }) as Record<string, unknown>,
-          outputSchema: zodToJsonSchema(ListPrefecturesStructuredSchema, {
-            target: 'jsonSchema7',
-          }) as Record<string, unknown>,
+          inputSchema: jsonSchema(ListPrefecturesInputSchema),
+          outputSchema: jsonSchema(ListPrefecturesStructuredSchema),
+        },
+        {
+          name: SEARCH_SAKES_BY_NAME_NAME,
+          description: SEARCH_SAKES_BY_NAME_DESCRIPTION,
+          inputSchema: jsonSchema(SearchSakesByNameInputSchema),
+          outputSchema: jsonSchema(SearchSakesByNameStructuredSchema),
         },
         {
           name: FIND_SIMILAR_SAKES_NAME,
           description: FIND_SIMILAR_SAKES_DESCRIPTION,
-          inputSchema: zodToJsonSchema(FindSimilarSakesInputSchema, {
-            target: 'jsonSchema7',
-          }) as Record<string, unknown>,
-          outputSchema: zodToJsonSchema(FindSimilarSakesStructuredSchema, {
-            target: 'jsonSchema7',
-          }) as Record<string, unknown>,
+          inputSchema: jsonSchema(FindSimilarSakesInputSchema),
+          outputSchema: jsonSchema(FindSimilarSakesStructuredSchema),
         },
       ],
     };
@@ -103,6 +113,25 @@ export function createServer(db: Db, logger: Logger): Server {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`list_prefectures failed: ${message}`);
         return toolError(`Failed to list prefectures: ${message}`);
+      }
+    }
+
+    if (name === SEARCH_SAKES_BY_NAME_NAME) {
+      const parsed = SearchSakesByNameInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const sakes = await searchSakesByName(parsed.data, db);
+        logger.debug(`search_sakes_by_name returned ${String(sakes.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(sakes) }],
+          structuredContent: { sakes },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`search_sakes_by_name failed: ${message}`);
+        return toolError(`Failed to search sakes: ${message}`);
       }
     }
 

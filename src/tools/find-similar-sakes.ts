@@ -1,13 +1,8 @@
 import { z } from 'zod';
 import type { Db } from '../db.js';
 import { FLAVOR_AXES, FlavorProfileSchema, type FlavorProfile } from './flavor-profile.js';
-import {
-  SAKE_JOIN,
-  SAKE_SELECT_COLUMNS,
-  SakeSchema,
-  type SakeJoinRow,
-  toSake,
-} from './sake.js';
+import { SakeSchema } from './sake.js';
+import { SAKE_COLUMNS, SAKE_FROM, mapSakeRow, type SakeJoinRow } from './sake-query.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -103,12 +98,16 @@ const FLAVOR_COLUMNS = FLAVOR_AXES.join(', ');
  * zero-magnitude vector (all six axes 0): the division yields SQL NULL rather
  * than a divide-by-zero error, and the `WHERE similarity IS NOT NULL` filter
  * drops those rows instead of emitting NaN. The source Sake ($7) is excluded.
- * Ties on similarity break by `s.id ASC` for determinism.
+ * Ties on similarity break by `id ASC` for determinism.
+ *
+ * The Sake columns and joins come from the shared sake-query helper; this tool
+ * splices in the six FlavorProfile columns, the cosine expression, and the
+ * `flavor_profiles` join.
  */
 const SIMILARITY_SQL = `
   WITH scored AS (
     SELECT
-      ${SAKE_SELECT_COLUMNS},
+      ${SAKE_COLUMNS},
       fp.hanayaka, fp.hojun, fp.juko, fp.odayaka, fp.dry, fp.keikai,
       (
         fp.hanayaka * $1 + fp.hojun * $2 + fp.juko * $3
@@ -126,13 +125,13 @@ const SIMILARITY_SQL = `
           0
         )
       ) AS similarity
-    FROM ${SAKE_JOIN}
+    FROM ${SAKE_FROM}
     JOIN flavor_profiles fp ON fp.sake_id = s.id
     WHERE s.id <> $7
   )
   SELECT * FROM scored
   WHERE similarity IS NOT NULL
-  ORDER BY similarity DESC, sake_id ASC
+  ORDER BY similarity DESC, id ASC
   LIMIT $8
 `;
 
@@ -193,7 +192,7 @@ export async function findSimilarSakes(
   ]);
 
   const results: SimilarSake[] = rows.map((row) => ({
-    sake: toSake(row),
+    sake: mapSakeRow(row),
     flavor_profile: {
       hanayaka: Number(row.hanayaka),
       hojun: Number(row.hojun),

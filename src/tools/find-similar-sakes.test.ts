@@ -77,9 +77,9 @@ function fixtureDb(fixtures: Fixture[]): Db {
         .sort((x, y) => y.similarity - x.similarity || x.f.id - y.f.id)
         .slice(0, topK)
         .map((r) => ({
-          sake_id: r.f.id,
-          sake_name_ja: `${r.f.name}_ja`,
-          sake_name_romaji: r.f.name,
+          id: r.f.id,
+          name_ja: `${r.f.name}_ja`,
+          name_romaji: r.f.name,
           brewery_id: r.f.id * 10,
           brewery_name_ja: `B${String(r.f.id)}_ja`,
           brewery_name_romaji: `B${String(r.f.id)}`,
@@ -218,9 +218,9 @@ describe('findSimilarSakes', () => {
         return Promise.resolve({
           rows: [
             {
-              sake_id: 2,
-              sake_name_ja: 'x_ja',
-              sake_name_romaji: 'x',
+              id: 2,
+              name_ja: 'x_ja',
+              name_romaji: 'x',
               brewery_id: 20,
               brewery_name_ja: 'b_ja',
               brewery_name_romaji: 'b',

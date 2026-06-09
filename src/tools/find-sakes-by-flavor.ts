@@ -45,11 +45,17 @@ export const AXIS_MIN_DEFAULT = 0;
 /** Upper default for a FlavorAxis range when `max` is omitted (axes are in `[0, 1]`). */
 export const AXIS_MAX_DEFAULT = 1;
 
-/** A single FlavorAxis range filter; each bound is independently optional. */
+/**
+ * A single FlavorAxis range filter; each bound is independently optional.
+ * `.finite()` rejects `Infinity`/`-Infinity` (NaN is already rejected by
+ * `z.number()`) — these are the only non-integer numeric inputs in the tool
+ * surface (every other numeric field is `.int()`, which already excludes both),
+ * so a bound is always a real number before it reaches the SQL `BETWEEN`.
+ */
 const AxisRangeSchema = z
   .object({
-    min: z.number().optional(),
-    max: z.number().optional(),
+    min: z.number().finite().optional(),
+    max: z.number().finite().optional(),
   })
   .strict();
 

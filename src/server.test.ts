@@ -71,11 +71,57 @@ describe('createServer tools/list', () => {
     await client.close();
   });
 
-  it('advertises exactly the tools shipped so far', async () => {
+  it('advertises get_sake_details with FlavorProfile/FlavorTag vocabulary', async () => {
+    const client = await connectedClient();
+    const { tools } = await client.listTools();
+
+    const details = tools.find((t) => t.name === 'get_sake_details');
+    expect(details).toBeDefined();
+    expect(details?.outputSchema).toBeDefined();
+
+    const description = details?.description ?? '';
+    expect(description.length).toBeGreaterThan(0);
+    // Uses CONTEXT.md vocabulary. "brand_id" is the legitimate Sakenowa field
+    // name, but the colloquial standalone "brand"/"label" must not appear, and
+    // FlavorProfile must never be called a "vector".
+    expect(description).toContain('Sake');
+    expect(description).toContain('FlavorProfile');
+    expect(description).toContain('FlavorTag');
+    expect(description.toLowerCase()).not.toContain('label');
+    expect(description.toLowerCase()).not.toContain('vector');
+
+    await client.close();
+  });
+
+  it('advertises get_top_ranked with Ranking/Prefecture vocabulary', async () => {
+    const client = await connectedClient();
+    const { tools } = await client.listTools();
+
+    const topRanked = tools.find((t) => t.name === 'get_top_ranked');
+    expect(topRanked).toBeDefined();
+    expect(topRanked?.outputSchema).toBeDefined();
+
+    const description = topRanked?.description ?? '';
+    expect(description.length).toBeGreaterThan(0);
+    // Uses CONTEXT.md vocabulary: "Ranking"/"Prefecture", never "area".
+    expect(description).toContain('Ranking');
+    expect(description).toContain('Prefecture');
+    expect(description.toLowerCase()).not.toContain('area');
+
+    await client.close();
+  });
+
+  it('advertises exactly the five tools shipped so far', async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
-      ['find_similar_sakes', 'list_prefectures', 'search_sakes_by_name'].sort(),
+      [
+        'find_similar_sakes',
+        'get_sake_details',
+        'get_top_ranked',
+        'list_prefectures',
+        'search_sakes_by_name',
+      ].sort(),
     );
 
     await client.close();

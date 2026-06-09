@@ -15,6 +15,20 @@ import {
   findSimilarSakes,
 } from './tools/find-similar-sakes.js';
 import {
+  GET_SAKE_DETAILS_DESCRIPTION,
+  GET_SAKE_DETAILS_NAME,
+  GetSakeDetailsInputSchema,
+  GetSakeDetailsStructuredSchema,
+  getSakeDetails,
+} from './tools/get-sake-details.js';
+import {
+  GET_TOP_RANKED_DESCRIPTION,
+  GET_TOP_RANKED_NAME,
+  GetTopRankedInputSchema,
+  GetTopRankedStructuredSchema,
+  getTopRanked,
+} from './tools/get-top-ranked.js';
+import {
   LIST_PREFECTURES_DESCRIPTION,
   LIST_PREFECTURES_NAME,
   ListPrefecturesInputSchema,
@@ -90,6 +104,18 @@ export function createServer(db: Db, logger: Logger): Server {
           inputSchema: jsonSchema(FindSimilarSakesInputSchema),
           outputSchema: jsonSchema(FindSimilarSakesStructuredSchema),
         },
+        {
+          name: GET_SAKE_DETAILS_NAME,
+          description: GET_SAKE_DETAILS_DESCRIPTION,
+          inputSchema: jsonSchema(GetSakeDetailsInputSchema),
+          outputSchema: jsonSchema(GetSakeDetailsStructuredSchema),
+        },
+        {
+          name: GET_TOP_RANKED_NAME,
+          description: GET_TOP_RANKED_DESCRIPTION,
+          inputSchema: jsonSchema(GetTopRankedInputSchema),
+          outputSchema: jsonSchema(GetTopRankedStructuredSchema),
+        },
       ],
     };
   });
@@ -151,6 +177,44 @@ export function createServer(db: Db, logger: Logger): Server {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`find_similar_sakes failed: ${message}`);
         return toolError(`Failed to find similar sakes: ${message}`);
+      }
+    }
+
+    if (name === GET_SAKE_DETAILS_NAME) {
+      const parsed = GetSakeDetailsInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const details = await getSakeDetails(parsed.data, db);
+        logger.debug(`get_sake_details found=${String(details.found)}`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(details) }],
+          structuredContent: { details },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`get_sake_details failed: ${message}`);
+        return toolError(`Failed to get sake details: ${message}`);
+      }
+    }
+
+    if (name === GET_TOP_RANKED_NAME) {
+      const parsed = GetTopRankedInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const rankedSakes = await getTopRanked(parsed.data, db);
+        logger.debug(`get_top_ranked returned ${String(rankedSakes.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(rankedSakes) }],
+          structuredContent: { ranked_sakes: rankedSakes },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`get_top_ranked failed: ${message}`);
+        return toolError(`Failed to get top ranked sakes: ${message}`);
       }
     }
 

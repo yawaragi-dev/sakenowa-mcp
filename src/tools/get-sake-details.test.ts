@@ -21,18 +21,20 @@ interface SakeFixture {
 
 /**
  * Build a Db stub. The first query is the Sake+FlavorProfile lookup
- * (params: [sake_id]); the second is the FlavorTags lookup (params: [sake_id]).
+ * (params: [sake_id]); the second is the batched FlavorTags lookup
+ * (params: [[sake_id]]), whose rows carry `sake_id` so the shared helper can
+ * group them.
  */
 function fixtureDb(fixtures: SakeFixture[]): Db {
   let call = 0;
   return {
     query: <R>(_sql: string, params?: unknown[]) => {
       call += 1;
-      const sakeId = params?.[0] as number;
-      const fixture = fixtures.find((f) => f.id === sakeId);
 
       if (call === 1) {
         // Sake + FlavorProfile join (LEFT JOIN: axes NULL when no profile).
+        const sakeId = params?.[0] as number;
+        const fixture = fixtures.find((f) => f.id === sakeId);
         if (fixture === undefined) {
           return Promise.resolve({ rows: [] as R[] });
         }
@@ -55,9 +57,13 @@ function fixtureDb(fixtures: SakeFixture[]): Db {
         return Promise.resolve({ rows: [row] as R[] });
       }
 
-      // FlavorTags lookup.
-      const tags = fixture?.tags ?? [];
-      return Promise.resolve({ rows: tags as R[] });
+      // FlavorTags lookup: batched `WHERE sake_id = ANY($1)` → params is
+      // [[sake_id]] and rows carry sake_id for grouping.
+      const ids = (params?.[0] as number[] | undefined) ?? [];
+      const rows = fixtures
+        .filter((f) => ids.includes(f.id))
+        .flatMap((f) => f.tags.map((t) => ({ sake_id: f.id, id: t.id, name_ja: t.name_ja })));
+      return Promise.resolve({ rows: rows as R[] });
     },
   };
 }

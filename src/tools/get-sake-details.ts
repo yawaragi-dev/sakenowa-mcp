@@ -1,9 +1,15 @@
 import { z } from 'zod';
 import type { Db } from '../db.js';
-import { FlavorProfileSchema } from './flavor-profile.js';
+import {
+  FLAVOR_PROFILE_COLUMNS,
+  FlavorProfileSchema,
+  mapFlavorProfile,
+} from './flavor-profile.js';
 import { FlavorTagSchema } from './flavor-tag.js';
+import { fetchFlavorTagsBySake } from './flavor-tag-query.js';
 import { SakeSchema } from './sake.js';
 import { SAKE_COLUMNS, SAKE_FROM, mapSakeRow, type SakeJoinRow } from './sake-query.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -56,18 +62,9 @@ export const GetSakeDetailsOutputSchema = z.discriminatedUnion('found', [
 export type GetSakeDetailsOutput = z.infer<typeof GetSakeDetailsOutputSchema>;
 
 /**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`. The details object is nested under
- * `details` so the structured payload is a single object (MCP `outputSchema`
- * must describe an object, not a bare union).
- */
-export const GetSakeDetailsStructuredSchema = z.object({
-  details: GetSakeDetailsOutputSchema,
-});
-
-/**
- * Postgres `numeric` columns arrive over `pg` as strings; `Number` normalises
- * them to the JS numbers the FlavorProfile schema requires.
+ * Postgres `numeric` columns arrive over `pg` as strings, and the LEFT JOIN
+ * leaves the axes `null` when a Sake has no FlavorProfile; `mapFlavorProfile`
+ * normalises both.
  */
 type Numeric = number | string;
 
@@ -84,12 +81,6 @@ interface SakeWithProfileRow extends SakeJoinRow {
   keikai: Numeric | null;
 }
 
-/** Flat row from the FlavorTags lookup. */
-interface FlavorTagRow {
-  id: number;
-  name_ja: string;
-}
-
 /**
  * Sake + FlavorProfile in one query: the canonical Sake join (Brewery +
  * Prefecture) with the six FlavorProfile axes spliced in via a LEFT JOIN, so a
@@ -98,29 +89,16 @@ interface FlavorTagRow {
 const SAKE_WITH_PROFILE_SQL = `
   SELECT
     ${SAKE_COLUMNS},
-    fp.hanayaka, fp.hojun, fp.juko, fp.odayaka, fp.dry, fp.keikai
+    ${FLAVOR_PROFILE_COLUMNS}
   FROM ${SAKE_FROM}
   LEFT JOIN flavor_profiles fp ON fp.sake_id = s.id
   WHERE s.id = $1
 `;
 
 /**
- * FlavorTags for a Sake, gathered through the `sake_flavor_tags` junction.
- * Ordered by tag id for deterministic output. A Sake with no tags yields no
- * rows (→ `flavor_tags: []`); this is run as a second query rather than an
- * aggregate so the tag list never multiplies the Sake row.
- */
-const FLAVOR_TAGS_SQL = `
-  SELECT ft.id AS id, ft.name_ja AS name_ja
-  FROM sake_flavor_tags sft
-  JOIN flavor_tags ft ON ft.id = sft.tag_id
-  WHERE sft.sake_id = $1
-  ORDER BY ft.id ASC
-`;
-
-/**
  * Query function for `get_sake_details`. Reads the Sake (with Brewery,
- * Prefecture and an optional FlavorProfile), then its FlavorTags.
+ * Prefecture and an optional FlavorProfile), then its FlavorTags via the shared
+ * batched lookup (a one-element id list here).
  *
  * Returns `{ found: false, sake_id }` when no Sake matches the id (not an
  * error). A found Sake with no FlavorProfile yields `flavor_profile: null`; one
@@ -136,26 +114,22 @@ export async function getSakeDetails(
     return GetSakeDetailsOutputSchema.parse({ found: false, sake_id: args.sake_id });
   }
 
-  // The LEFT JOIN leaves every axis NULL together when there is no
-  // FlavorProfile row; checking one axis is sufficient to detect that case.
-  const hasProfile = row.hanayaka !== null;
-  const flavorProfile = hasProfile
-    ? {
-        hanayaka: Number(row.hanayaka),
-        hojun: Number(row.hojun),
-        juko: Number(row.juko),
-        odayaka: Number(row.odayaka),
-        dry: Number(row.dry),
-        keikai: Number(row.keikai),
-      }
-    : null;
-
-  const tagsResult = await db.query<FlavorTagRow>(FLAVOR_TAGS_SQL, [args.sake_id]);
+  const tagsBySake = await fetchFlavorTagsBySake(db, [args.sake_id]);
 
   return GetSakeDetailsOutputSchema.parse({
     found: true,
     sake: mapSakeRow(row),
-    flavor_profile: flavorProfile,
-    flavor_tags: tagsResult.rows,
+    flavor_profile: mapFlavorProfile(row),
+    flavor_tags: tagsBySake.get(args.sake_id) ?? [],
   });
 }
+
+/** Registry descriptor for `get_sake_details`. */
+export const getSakeDetailsTool = defineTool({
+  name: GET_SAKE_DETAILS_NAME,
+  description: GET_SAKE_DETAILS_DESCRIPTION,
+  inputSchema: GetSakeDetailsInputSchema,
+  outputSchema: GetSakeDetailsOutputSchema,
+  structuredKey: 'details',
+  run: getSakeDetails,
+});

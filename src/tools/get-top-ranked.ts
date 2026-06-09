@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Db } from '../db.js';
 import { SakeSchema } from './sake.js';
 import { SAKE_COLUMNS, SAKE_FROM, mapSakeRow, type SakeJoinRow } from './sake-query.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -67,14 +68,6 @@ export type RankedSake = z.infer<typeof RankedSakeSchema>;
 
 export const GetTopRankedOutputSchema = z.array(RankedSakeSchema);
 
-/**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`.
- */
-export const GetTopRankedStructuredSchema = z.object({
-  ranked_sakes: GetTopRankedOutputSchema,
-});
-
 /** Flat row from the rankings join: the canonical Sake columns + rank columns. */
 interface RankedRow extends SakeJoinRow {
   rank: number;
@@ -134,3 +127,13 @@ export async function getTopRanked(args: GetTopRankedInput, db: Db): Promise<Ran
   // Parse at the output boundary before returning.
   return GetTopRankedOutputSchema.parse(results);
 }
+
+/** Registry descriptor for `get_top_ranked`. */
+export const getTopRankedTool = defineTool({
+  name: GET_TOP_RANKED_NAME,
+  description: GET_TOP_RANKED_DESCRIPTION,
+  inputSchema: GetTopRankedInputSchema,
+  outputSchema: GetTopRankedOutputSchema,
+  structuredKey: 'ranked_sakes',
+  run: getTopRanked,
+});

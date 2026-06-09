@@ -2,6 +2,7 @@ import { z } from 'zod';
 import type { Db } from '../db.js';
 import { SakeSchema, type Sake } from './sake.js';
 import { SAKE_SELECT_JOIN, mapSakeRow, type SakeJoinRow } from './sake-query.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -38,15 +39,6 @@ export const SearchSakesByNameInputSchema = z
   .strict();
 
 export const SearchSakesByNameOutputSchema = z.array(SakeSchema);
-
-/**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`. MCP clients that validate structured
- * results check the payload against this shape.
- */
-export const SearchSakesByNameStructuredSchema = z.object({
-  sakes: SearchSakesByNameOutputSchema,
-});
 
 /**
  * Query function for `search_sakes_by_name`. Matches `query` case-insensitively
@@ -100,3 +92,13 @@ export async function searchSakesByName(
   // boundary before returning.
   return SearchSakesByNameOutputSchema.parse(rows.map(mapSakeRow));
 }
+
+/** Registry descriptor for `search_sakes_by_name`. */
+export const searchSakesByNameTool = defineTool({
+  name: SEARCH_SAKES_BY_NAME_NAME,
+  description: SEARCH_SAKES_BY_NAME_DESCRIPTION,
+  inputSchema: SearchSakesByNameInputSchema,
+  outputSchema: SearchSakesByNameOutputSchema,
+  structuredKey: 'sakes',
+  run: searchSakesByName,
+});

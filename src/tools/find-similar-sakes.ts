@@ -1,8 +1,14 @@
 import { z } from 'zod';
 import type { Db } from '../db.js';
-import { FLAVOR_AXES, FlavorProfileSchema, type FlavorProfile } from './flavor-profile.js';
+import {
+  FLAVOR_AXES,
+  FLAVOR_PROFILE_COLUMNS,
+  FlavorProfileSchema,
+  coerceFlavorProfile,
+} from './flavor-profile.js';
 import { SakeSchema } from './sake.js';
 import { SAKE_COLUMNS, SAKE_FROM, mapSakeRow, type SakeJoinRow } from './sake-query.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -51,18 +57,9 @@ export type SimilarSake = z.infer<typeof SimilarSakeSchema>;
 export const FindSimilarSakesOutputSchema = z.array(SimilarSakeSchema);
 
 /**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`.
- */
-export const FindSimilarSakesStructuredSchema = z.object({
-  similar_sakes: FindSimilarSakesOutputSchema,
-});
-
-/**
- * Postgres `numeric` columns arrive over `pg` as strings; `float8` arrives as a
- * number. The math is done server-side in SQL, but the FlavorProfile values and
- * similarity score we return must be numbers for the output schema. `Number`
- * normalises both representations.
+ * Postgres `numeric` columns arrive over `pg` as strings; the shared
+ * `coerceFlavorProfile` / `Number` normalise them to the JS numbers the output
+ * schema requires.
  */
 type Numeric = number | string;
 
@@ -100,15 +97,15 @@ const FLAVOR_COLUMNS = FLAVOR_AXES.join(', ');
  * drops those rows instead of emitting NaN. The source Sake ($7) is excluded.
  * Ties on similarity break by `id ASC` for determinism.
  *
- * The Sake columns and joins come from the shared sake-query helper; this tool
- * splices in the six FlavorProfile columns, the cosine expression, and the
+ * The Sake columns/joins and the six FlavorProfile output columns come from the
+ * shared helpers; this tool splices in the cosine expression and the
  * `flavor_profiles` join.
  */
 const SIMILARITY_SQL = `
   WITH scored AS (
     SELECT
       ${SAKE_COLUMNS},
-      fp.hanayaka, fp.hojun, fp.juko, fp.odayaka, fp.dry, fp.keikai,
+      ${FLAVOR_PROFILE_COLUMNS},
       (
         fp.hanayaka * $1 + fp.hojun * $2 + fp.juko * $3
         + fp.odayaka * $4 + fp.dry * $5 + fp.keikai * $6
@@ -171,14 +168,7 @@ export async function findSimilarSakes(
   if (sourceRow === undefined) {
     return [];
   }
-  const sourceProfile: FlavorProfile = {
-    hanayaka: Number(sourceRow.hanayaka),
-    hojun: Number(sourceRow.hojun),
-    juko: Number(sourceRow.juko),
-    odayaka: Number(sourceRow.odayaka),
-    dry: Number(sourceRow.dry),
-    keikai: Number(sourceRow.keikai),
-  };
+  const sourceProfile = coerceFlavorProfile(sourceRow);
 
   const { rows } = await db.query<SimilarRow>(SIMILARITY_SQL, [
     sourceProfile.hanayaka,
@@ -193,17 +183,20 @@ export async function findSimilarSakes(
 
   const results: SimilarSake[] = rows.map((row) => ({
     sake: mapSakeRow(row),
-    flavor_profile: {
-      hanayaka: Number(row.hanayaka),
-      hojun: Number(row.hojun),
-      juko: Number(row.juko),
-      odayaka: Number(row.odayaka),
-      dry: Number(row.dry),
-      keikai: Number(row.keikai),
-    },
+    flavor_profile: coerceFlavorProfile(row),
     similarity: clampSimilarity(Number(row.similarity)),
   }));
 
   // Parse at the output boundary before returning.
   return FindSimilarSakesOutputSchema.parse(results);
 }
+
+/** Registry descriptor for `find_similar_sakes`. */
+export const findSimilarSakesTool = defineTool({
+  name: FIND_SIMILAR_SAKES_NAME,
+  description: FIND_SIMILAR_SAKES_DESCRIPTION,
+  inputSchema: FindSimilarSakesInputSchema,
+  outputSchema: FindSimilarSakesOutputSchema,
+  structuredKey: 'similar_sakes',
+  run: findSimilarSakes,
+});

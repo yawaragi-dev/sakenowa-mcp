@@ -111,11 +111,35 @@ describe('createServer tools/list', () => {
     await client.close();
   });
 
-  it('advertises exactly the five tools shipped so far', async () => {
+  it('advertises find_sakes_by_flavor with FlavorProfile/FlavorTag/Prefecture vocabulary', async () => {
+    const client = await connectedClient();
+    const { tools } = await client.listTools();
+
+    const byFlavor = tools.find((t) => t.name === 'find_sakes_by_flavor');
+    expect(byFlavor).toBeDefined();
+    expect(byFlavor?.outputSchema).toBeDefined();
+
+    const description = byFlavor?.description ?? '';
+    expect(description.length).toBeGreaterThan(0);
+    // Uses CONTEXT.md vocabulary: Sake / FlavorProfile / FlavorTag / Prefecture,
+    // never "brand"/"label"/"vector"/"area".
+    expect(description).toContain('Sake');
+    expect(description).toContain('FlavorProfile');
+    expect(description).toContain('FlavorTag');
+    expect(description).toContain('Prefecture');
+    expect(description.toLowerCase()).not.toContain('label');
+    expect(description.toLowerCase()).not.toContain('vector');
+    expect(description.toLowerCase()).not.toContain('area');
+
+    await client.close();
+  });
+
+  it('advertises exactly the six tools shipped in v0.1.0', async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
     expect(tools.map((t) => t.name).sort()).toEqual(
       [
+        'find_sakes_by_flavor',
         'find_similar_sakes',
         'get_sake_details',
         'get_top_ranked',

@@ -8,6 +8,13 @@ import { zodToJsonSchema } from 'zod-to-json-schema';
 import type { Db } from './db.js';
 import type { Logger } from './logger.js';
 import {
+  FIND_SAKES_BY_FLAVOR_DESCRIPTION,
+  FIND_SAKES_BY_FLAVOR_NAME,
+  FindSakesByFlavorInputSchema,
+  FindSakesByFlavorStructuredSchema,
+  findSakesByFlavor,
+} from './tools/find-sakes-by-flavor.js';
+import {
   FIND_SIMILAR_SAKES_DESCRIPTION,
   FIND_SIMILAR_SAKES_NAME,
   FindSimilarSakesInputSchema,
@@ -116,6 +123,12 @@ export function createServer(db: Db, logger: Logger): Server {
           inputSchema: jsonSchema(GetTopRankedInputSchema),
           outputSchema: jsonSchema(GetTopRankedStructuredSchema),
         },
+        {
+          name: FIND_SAKES_BY_FLAVOR_NAME,
+          description: FIND_SAKES_BY_FLAVOR_DESCRIPTION,
+          inputSchema: jsonSchema(FindSakesByFlavorInputSchema),
+          outputSchema: jsonSchema(FindSakesByFlavorStructuredSchema),
+        },
       ],
     };
   });
@@ -215,6 +228,25 @@ export function createServer(db: Db, logger: Logger): Server {
         const message = error instanceof Error ? error.message : String(error);
         logger.error(`get_top_ranked failed: ${message}`);
         return toolError(`Failed to get top ranked sakes: ${message}`);
+      }
+    }
+
+    if (name === FIND_SAKES_BY_FLAVOR_NAME) {
+      const parsed = FindSakesByFlavorInputSchema.safeParse(rawArgs ?? {});
+      if (!parsed.success) {
+        return invalidArguments(parsed.error.message);
+      }
+      try {
+        const sakes = await findSakesByFlavor(parsed.data, db);
+        logger.debug(`find_sakes_by_flavor returned ${String(sakes.length)} rows`);
+        return {
+          content: [{ type: 'text' as const, text: JSON.stringify(sakes) }],
+          structuredContent: { sakes },
+        };
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`find_sakes_by_flavor failed: ${message}`);
+        return toolError(`Failed to find sakes by flavor: ${message}`);
       }
     }
 

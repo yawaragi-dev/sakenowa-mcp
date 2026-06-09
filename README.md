@@ -6,7 +6,7 @@ Connect it to Claude Desktop, the AI SDK's MCP client, or any other MCP consumer
 
 The server is **read-only**, **stateless**, and intentionally domain-pure — no LLM calls, no cross-beverage heuristics, no user identity, no business logic. The OSS asset's value is its independence: any consumer that mirrors Sakenowa data into Postgres can plug this in.
 
-> **Status:** v0.1.0 in development. The current scope is captured in [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). Open issues on GitHub track the implementation slices. Star the repo to follow progress.
+> **Status:** v0.1.0 released — all six tools below are implemented and on npm. See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md) for the full contract.
 
 ## What's in v0.1.0
 
@@ -72,6 +72,18 @@ const tools = await mcp.tools();
 This server reads from Postgres; it does **not** fetch from Sakenowa's API at query time and does **not** ship an ingest pipeline. You bring the data.
 
 The expected schema is documented in [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). Any ingest that produces tables matching that shape works.
+
+### Recommended indexes
+
+At the Sakenowa scale (~5k sakes, 47 prefectures, 117 tags) every query is a small scan that runs in single-digit milliseconds, so indexes are optional to *start*. As the mirror grows, add these on the **consumer's** Postgres so the server's queries stay fast (Postgres does **not** auto-index foreign keys):
+
+| Index | Keeps fast |
+|---|---|
+| `breweries(prefecture_id)`, `sakes(brewery_id)` | the Sake → Brewery → Prefecture join used by most tools |
+| `sake_flavor_tags(tag_id)` | the `find_sakes_by_flavor` tag-intersection (the PK `(sake_id, tag_id)` already covers `sake_id` lookups, not `tag_id`) |
+| `rankings(scope, prefecture_id, rank)` | `get_top_ranked`'s filter + order |
+| `flavor_profiles(sake_id)` | already the primary key per the schema; covers `find_similar_sakes` and detail joins |
+| `pg_trgm` GIN on `sakes(name_ja, name_romaji)` *(optional)* | `search_sakes_by_name` only if it must scale past a few thousand rows (it uses substring `ILIKE`, which can't use a btree index) |
 
 ## Configuration
 

@@ -1,9 +1,16 @@
 import { z } from 'zod';
 import type { Db } from '../db.js';
-import { FLAVOR_AXES, FlavorProfileSchema } from './flavor-profile.js';
-import { FlavorTagSchema, type FlavorTag } from './flavor-tag.js';
+import {
+  FLAVOR_AXES,
+  FLAVOR_PROFILE_COLUMNS,
+  FlavorProfileSchema,
+  mapFlavorProfile,
+} from './flavor-profile.js';
+import { FlavorTagSchema } from './flavor-tag.js';
+import { fetchFlavorTagsBySake } from './flavor-tag-query.js';
 import { SakeSchema } from './sake.js';
 import { SAKE_COLUMNS, SAKE_FROM, mapSakeRow, type SakeJoinRow } from './sake-query.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -109,16 +116,9 @@ export type FlavorMatch = z.infer<typeof FlavorMatchSchema>;
 export const FindSakesByFlavorOutputSchema = z.array(FlavorMatchSchema);
 
 /**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`.
- */
-export const FindSakesByFlavorStructuredSchema = z.object({
-  sakes: FindSakesByFlavorOutputSchema,
-});
-
-/**
- * Postgres `numeric` columns arrive over `pg` as strings; `Number` normalises
- * them to the JS numbers the FlavorProfile schema requires.
+ * Postgres `numeric` columns arrive over `pg` as strings; the LEFT JOIN leaves
+ * the axes `null` when the Sake has no FlavorProfile. `mapFlavorProfile`
+ * normalises both.
  */
 type Numeric = number | string;
 
@@ -134,13 +134,6 @@ interface MatchRow extends SakeJoinRow {
   odayaka: Numeric | null;
   dry: Numeric | null;
   keikai: Numeric | null;
-}
-
-/** Flat row from the batched FlavorTags lookup. */
-interface FlavorTagRow {
-  sake_id: number;
-  id: number;
-  name_ja: string;
 }
 
 /**
@@ -215,9 +208,9 @@ function buildFilters(args: FindSakesByFlavorInput): { clauses: string[]; params
  *     (LEFT JOIN, so the FlavorProfile may be NULL), applying every supplied
  *     filter plus the always-on areaId-0 exclusion, ordered by `s.id ASC` and
  *     limited to `top_k`.
- *  2. ONE batched FlavorTags query for ALL matched Sake ids
- *     (`sft.sake_id = ANY($1)`), grouped in JS — so a 50-result call still
- *     issues exactly two queries, not 51. Skipped entirely when nothing matched.
+ *  2. ONE batched FlavorTags query for ALL matched Sake ids, via the shared
+ *     `fetchFlavorTagsBySake` helper — so a 50-result call still issues exactly
+ *     two queries, not 51. Skipped entirely when nothing matched.
  *
  * The empty-filter contract is enforced by the input schema's `superRefine`, so
  * by the time this runs at least one filter family is present.
@@ -235,7 +228,7 @@ export async function findSakesByFlavor(
   const filterSql = `
     SELECT
       ${SAKE_COLUMNS},
-      fp.hanayaka, fp.hojun, fp.juko, fp.odayaka, fp.dry, fp.keikai
+      ${FLAVOR_PROFILE_COLUMNS}
     FROM ${SAKE_FROM}
     LEFT JOIN flavor_profiles fp ON fp.sake_id = s.id
     WHERE ${clauses.join('\n      AND ')}
@@ -249,47 +242,27 @@ export async function findSakesByFlavor(
     return FindSakesByFlavorOutputSchema.parse([]);
   }
 
-  const sakeIds = rows.map((row) => row.id);
-
-  // One batched tags query for every matched Sake; grouped in JS below.
-  const tagsResult = await db.query<FlavorTagRow>(
-    `SELECT sft.sake_id AS sake_id, ft.id AS id, ft.name_ja AS name_ja
-     FROM sake_flavor_tags sft
-     JOIN flavor_tags ft ON ft.id = sft.tag_id
-     WHERE sft.sake_id = ANY($1)
-     ORDER BY sft.sake_id ASC, ft.id ASC`,
-    [sakeIds],
+  const tagsBySake = await fetchFlavorTagsBySake(
+    db,
+    rows.map((row) => row.id),
   );
 
-  const tagsBySake = new Map<number, FlavorTag[]>();
-  for (const tagRow of tagsResult.rows) {
-    const list = tagsBySake.get(tagRow.sake_id) ?? [];
-    list.push({ id: tagRow.id, name_ja: tagRow.name_ja });
-    tagsBySake.set(tagRow.sake_id, list);
-  }
-
-  const results: FlavorMatch[] = rows.map((row) => {
-    // The LEFT JOIN leaves every axis NULL together when there is no
-    // FlavorProfile row; checking one axis is sufficient to detect that case.
-    const flavorProfile =
-      row.hanayaka !== null
-        ? {
-            hanayaka: Number(row.hanayaka),
-            hojun: Number(row.hojun),
-            juko: Number(row.juko),
-            odayaka: Number(row.odayaka),
-            dry: Number(row.dry),
-            keikai: Number(row.keikai),
-          }
-        : null;
-
-    return {
-      sake: mapSakeRow(row),
-      flavor_profile: flavorProfile,
-      flavor_tags: tagsBySake.get(row.id) ?? [],
-    };
-  });
+  const results: FlavorMatch[] = rows.map((row) => ({
+    sake: mapSakeRow(row),
+    flavor_profile: mapFlavorProfile(row),
+    flavor_tags: tagsBySake.get(row.id) ?? [],
+  }));
 
   // Parse at the output boundary before returning.
   return FindSakesByFlavorOutputSchema.parse(results);
 }
+
+/** Registry descriptor for `find_sakes_by_flavor`. */
+export const findSakesByFlavorTool = defineTool({
+  name: FIND_SAKES_BY_FLAVOR_NAME,
+  description: FIND_SAKES_BY_FLAVOR_DESCRIPTION,
+  inputSchema: FindSakesByFlavorInputSchema,
+  outputSchema: FindSakesByFlavorOutputSchema,
+  structuredKey: 'sakes',
+  run: findSakesByFlavor,
+});

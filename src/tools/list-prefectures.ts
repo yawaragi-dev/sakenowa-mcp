@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { Db } from '../db.js';
 import { PrefectureSchema, type Prefecture } from './prefecture.js';
+import { defineTool } from './tool-definition.js';
 
 /**
  * Tool name and description advertised over MCP. The description uses the
@@ -18,15 +19,6 @@ export const LIST_PREFECTURES_DESCRIPTION =
 export const ListPrefecturesInputSchema = z.object({}).strict();
 
 export const ListPrefecturesOutputSchema = z.array(PrefectureSchema);
-
-/**
- * Structured-content wrapper advertised as the tool's `outputSchema` and
- * returned as `structuredContent`. MCP clients that validate structured
- * results check the payload against this shape.
- */
-export const ListPrefecturesStructuredSchema = z.object({
-  prefectures: ListPrefecturesOutputSchema,
-});
 
 interface PrefectureRow {
   id: number;
@@ -50,3 +42,13 @@ export async function listPrefectures(
   // Parse at the output boundary before returning.
   return ListPrefecturesOutputSchema.parse(rows);
 }
+
+/** Registry descriptor for `list_prefectures`. */
+export const listPrefecturesTool = defineTool({
+  name: LIST_PREFECTURES_NAME,
+  description: LIST_PREFECTURES_DESCRIPTION,
+  inputSchema: ListPrefecturesInputSchema,
+  outputSchema: ListPrefecturesOutputSchema,
+  structuredKey: 'prefectures',
+  run: listPrefectures,
+});

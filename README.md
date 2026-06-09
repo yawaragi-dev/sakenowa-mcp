@@ -73,6 +73,18 @@ This server reads from Postgres; it does **not** fetch from Sakenowa's API at qu
 
 The expected schema is documented in [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). Any ingest that produces tables matching that shape works.
 
+### Recommended indexes
+
+At the Sakenowa scale (~5k sakes, 47 prefectures, 117 tags) every query is a small scan that runs in single-digit milliseconds, so indexes are optional to *start*. As the mirror grows, add these on the **consumer's** Postgres so the server's queries stay fast (Postgres does **not** auto-index foreign keys):
+
+| Index | Keeps fast |
+|---|---|
+| `breweries(prefecture_id)`, `sakes(brewery_id)` | the Sake → Brewery → Prefecture join used by most tools |
+| `sake_flavor_tags(tag_id)` | the `find_sakes_by_flavor` tag-intersection (the PK `(sake_id, tag_id)` already covers `sake_id` lookups, not `tag_id`) |
+| `rankings(scope, prefecture_id, rank)` | `get_top_ranked`'s filter + order |
+| `flavor_profiles(sake_id)` | already the primary key per the schema; covers `find_similar_sakes` and detail joins |
+| `pg_trgm` GIN on `sakes(name_ja, name_romaji)` *(optional)* | `search_sakes_by_name` only if it must scale past a few thousand rows (it uses substring `ILIKE`, which can't use a btree index) |
+
 ## Configuration
 
 | Variable | Required? | Default | Purpose |

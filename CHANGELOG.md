@@ -4,6 +4,38 @@ All notable changes to `@yawaragi/sakenowa-mcp` are documented here. The format
 follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); this project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## 0.2.0
+
+Adds a second transport — **Streamable HTTP** — alongside stdio. Additive and
+opt-in: with `MCP_TRANSPORT` unset or `stdio`, behaviour is bit-for-bit
+identical to 0.1.0. The HTTP transport exists for consumers that can't keep a
+child process alive between requests (e.g. serverless web apps).
+
+### Added
+
+- **Streamable HTTP transport**, selected with `MCP_TRANSPORT=http`. A
+  long-running server handles MCP JSON-RPC over HTTP POST at a configurable
+  endpoint. Stateless (no sessions) and returns plain `application/json`
+  responses — the Sakenowa tools are short synchronous reads.
+- **Transport configuration env vars** (HTTP mode only):
+  - `MCP_TRANSPORT` — `stdio` (default) | `http`. An unknown value fails loud on
+    stderr with a non-zero exit.
+  - `MCP_HTTP_PORT` (default `3030`), `MCP_HTTP_HOST` (default `0.0.0.0`),
+    `MCP_HTTP_PATH` (default `/mcp`).
+
+### Unchanged
+
+- The six tools, their input/output contracts, the expected DB schema, and the
+  `Db` query layer are identical across both transports.
+- stdio remains the default; no existing consumer config changes.
+
+### Still out of scope
+
+No authentication, no TLS, no SSE/streaming responses, no per-request session
+state. Auth and TLS are the consumer's responsibility — put a proxy
+(Cloudflare Tunnel, a reverse proxy, a platform's TLS + bearer) in front of the
+HTTP endpoint at deploy time.
+
 ## 0.1.0
 
 First public release: a read-only, stateless MCP server over a

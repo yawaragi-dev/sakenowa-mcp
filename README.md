@@ -6,7 +6,7 @@ Connect it to Claude Desktop, the AI SDK's MCP client, or any other MCP consumer
 
 The server is **read-only**, **stateless**, and intentionally domain-pure — no LLM calls, no cross-beverage heuristics, no user identity, no business logic. The OSS asset's value is its independence: any consumer that mirrors Sakenowa data into Postgres can plug this in.
 
-> **Status:** v0.1.0 released — all six tools below are implemented and on npm. See [`CHANGELOG.md`](./CHANGELOG.md) for release notes and [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md) for the full contract.
+> **Status:** v0.2.0 — the six read-only tools below, served over **stdio** (default) or **Streamable HTTP** (`MCP_TRANSPORT=http`). See [`CHANGELOG.md`](./CHANGELOG.md) for release notes, [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md) for the tool contract, and [`docs/specs/v0.2.0.md`](./docs/specs/v0.2.0.md) for the transport contract.
 
 ## What's in v0.1.0
 
@@ -27,7 +27,7 @@ Full input / output shapes and SQL intent: [`docs/specs/v0.1.0.md`](./docs/specs
 pnpm add -g @yawaragi/sakenowa-mcp   # or npm i -g / yarn global add
 ```
 
-The server reads `DATABASE_URL` from the environment and serves MCP over stdio.
+The server reads `DATABASE_URL` from the environment and serves MCP over **stdio** by default, or over **Streamable HTTP** when `MCP_TRANSPORT=http`.
 
 ### Claude Desktop config
 
@@ -48,6 +48,32 @@ Add to `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS)
 ```
 
 Restart Claude Desktop. The six tools become available in any chat.
+
+### HTTP consumer config
+
+For consumers that can't keep a child process alive — a serverless web app, a long-lived service calling MCP over the network — run the server in HTTP mode. It speaks the [MCP Streamable HTTP transport](https://modelcontextprotocol.io/specification/2025-03-26/basic/transports) over a single JSON-RPC `POST` endpoint.
+
+Run it (e.g. on Railway / Fly / Render, or any Node host):
+
+```bash
+MCP_TRANSPORT=http \
+DATABASE_URL="postgresql://user:pass@host:5432/your_sakenowa_mirror" \
+  npx -y @yawaragi/sakenowa-mcp
+# listening on http://0.0.0.0:3030/mcp  (override with MCP_HTTP_PORT / MCP_HTTP_HOST / MCP_HTTP_PATH)
+```
+
+Smoke-test it (note the `Accept` header — the transport requires both content types):
+
+```bash
+curl -X POST http://localhost:3030/mcp \
+  -H "Content-Type: application/json" \
+  -H "Accept: application/json, text/event-stream" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+Point an HTTP MCP client at the URL — for example the [AI SDK's MCP client](https://sdk.vercel.ai/cookbook/node/mcp-tools) over a `StreamableHTTPClientTransport` configured with `https://your-host/mcp`.
+
+> **Security:** the server binds **plain HTTP with no authentication** — that's the OSS contract (stateless, no auth, no business logic). Put auth and TLS in front of it at deploy time (Cloudflare Tunnel, a reverse proxy with a bearer token, a platform's auto-TLS, etc.). Never expose the raw endpoint to an untrusted network.
 
 ### AI SDK (Vercel) consumers
 
@@ -91,6 +117,10 @@ At the Sakenowa scale (~5k sakes, 47 prefectures, 117 tags) every query is a sma
 |---|---|---|---|
 | `DATABASE_URL` | yes | — | Postgres connection string (read-only role recommended) |
 | `MCP_LOG_LEVEL` | no | `error` | `silent` / `error` / `info` / `debug`. Anything other than `silent` writes to stderr only. |
+| `MCP_TRANSPORT` | no | `stdio` | `stdio` or `http`. An unknown value fails loud on stderr with a non-zero exit. |
+| `MCP_HTTP_PORT` | no | `3030` | Port for HTTP mode. Ignored under stdio. |
+| `MCP_HTTP_HOST` | no | `0.0.0.0` | Bind host for HTTP mode. Ignored under stdio. |
+| `MCP_HTTP_PATH` | no | `/mcp` | JSON-RPC endpoint path for HTTP mode. Ignored under stdio. |
 
 ## Attribution
 

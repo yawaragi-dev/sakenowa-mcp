@@ -11,7 +11,8 @@ export const GET_TOP_RANKED_DESCRIPTION =
   'either the overall ranking or a single area. Pass `scope: "overall"`, or `scope: "area"` ' +
   'with an `areaId`. `limit` defaults to 10, capped 100. Results are ordered by rank ' +
   'ascending; each carries the brand (with brewery + area) and its `rank`. An unknown ' +
-  '`areaId` yields an empty list, not an error.';
+  '`areaId` yields an empty list, not an error. Returns the latest ranking snapshot ' +
+  'only — the canonical mirror does not retain historical monthly snapshots.';
 
 export const DEFAULT_LIMIT = 10;
 export const MAX_LIMIT = 100;

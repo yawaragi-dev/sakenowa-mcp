@@ -2,178 +2,80 @@ import { describe, expect, it } from 'vitest';
 import type { Db } from '../db.js';
 import { getSakeDetails } from './get-sake-details.js';
 
-/*
- * Unit tests against a stubbed Db. The stub is a tiny in-memory Postgres
- * analogue: it answers the Sake+FlavorProfile lookup from a fixture, then the
- * FlavorTags lookup from a separate fixture. Tests assert the SHAPE the function
- * produces (found/not-found, profile present/null, tags present/empty), not the
- * SQL it sends — matching the S1/S2/S5 style.
- */
-
-interface SakeFixture {
-  id: number;
-  name_romaji: string;
-  // null = no FlavorProfile row for this Sake.
-  profile: Record<string, number> | null;
-  // FlavorTags attached to this Sake.
-  tags: { id: number; name_ja: string }[];
+interface Fixture {
+  brand_id: number;
+  name: string;
+  chart: Record<string, number> | null;
 }
 
-/**
- * Build a Db stub. The first query is the Sake+FlavorProfile lookup
- * (params: [sake_id]); the second is the batched FlavorTags lookup
- * (params: [[sake_id]]), whose rows carry `sake_id` so the shared helper can
- * group them.
- */
-function fixtureDb(fixtures: SakeFixture[]): Db {
-  let call = 0;
+function fixtureDb(fixtures: Fixture[]): Db {
   return {
     query: <R>(_sql: string, params?: unknown[]) => {
-      call += 1;
-
-      if (call === 1) {
-        // Sake + FlavorProfile join (LEFT JOIN: axes NULL when no profile).
-        const sakeId = params?.[0] as number;
-        const fixture = fixtures.find((f) => f.id === sakeId);
-        if (fixture === undefined) {
-          return Promise.resolve({ rows: [] as R[] });
-        }
-        const profileCols =
-          fixture.profile === null
-            ? { hanayaka: null, hojun: null, juko: null, odayaka: null, dry: null, keikai: null }
-            : fixture.profile;
-        const row = {
-          id: fixture.id,
-          name_ja: `${fixture.name_romaji}_ja`,
-          name_romaji: fixture.name_romaji,
-          brewery_id: fixture.id * 10,
-          brewery_name_ja: `B${String(fixture.id)}_ja`,
-          brewery_name_romaji: `B${String(fixture.id)}`,
-          prefecture_id: 15,
-          prefecture_name_ja: '新潟県',
-          prefecture_name_romaji: 'Niigata',
-          ...profileCols,
-        };
-        return Promise.resolve({ rows: [row] as R[] });
-      }
-
-      // FlavorTags lookup: batched `WHERE sake_id = ANY($1)` → params is
-      // [[sake_id]] and rows carry sake_id for grouping.
-      const ids = (params?.[0] as number[] | undefined) ?? [];
-      const rows = fixtures
-        .filter((f) => ids.includes(f.id))
-        .flatMap((f) => f.tags.map((t) => ({ sake_id: f.id, id: t.id, name_ja: t.name_ja })));
-      return Promise.resolve({ rows: rows as R[] });
+      const brandId = params?.[0] as number;
+      const f = fixtures.find((x) => x.brand_id === brandId);
+      if (f === undefined) return Promise.resolve({ rows: [] as R[] });
+      const chartCols =
+        f.chart === null
+          ? { f1: null, f2: null, f3: null, f4: null, f5: null, f6: null }
+          : f.chart;
+      const row = {
+        brand_id: f.brand_id,
+        name: f.name,
+        name_romaji: `${f.name}-romaji`,
+        brewery_id: f.brand_id * 10,
+        brewery_name: `B${String(f.brand_id)}`,
+        brewery_name_romaji: null,
+        area_id: 15,
+        area_name: '新潟県',
+        ...chartCols,
+      };
+      return Promise.resolve({ rows: [row] as R[] });
     },
   };
 }
 
-const profile = {
-  hanayaka: 0.8,
-  hojun: 0.6,
-  juko: 0.4,
-  odayaka: 0.3,
-  dry: 0.5,
-  keikai: 0.7,
-};
+const chart = { f1: 0.8, f2: 0.6, f3: 0.4, f4: 0.3, f5: 0.5, f6: 0.7 };
 
 describe('getSakeDetails', () => {
-  it('returns the full nested Sake, FlavorProfile and FlavorTags for a known id', async () => {
-    const db = fixtureDb([
-      {
-        id: 1,
-        name_romaji: 'Dassai',
-        profile,
-        tags: [
-          { id: 12, name_ja: '甘味' },
-          { id: 5, name_ja: '旨味' },
-        ],
-      },
-    ]);
-
-    const result = await getSakeDetails({ sake_id: 1 }, db);
-
+  it('returns the nested brand + FlavorChart for a known brandId', async () => {
+    const result = await getSakeDetails({ brandId: 1 }, fixtureDb([{ brand_id: 1, name: '獺祭', chart }]));
     expect(result.found).toBe(true);
     if (!result.found) throw new Error('expected found');
-    expect(result.sake.id).toBe(1);
-    expect(result.sake.name_romaji).toBe('Dassai');
-    // Brewery + Prefecture nested inside `sake`.
-    expect(result.sake.brewery.id).toBe(10);
-    expect(result.sake.prefecture.name_romaji).toBe('Niigata');
-    expect(result.flavor_profile).toEqual(profile);
-    expect(result.flavor_tags).toEqual([
-      { id: 12, name_ja: '甘味' },
-      { id: 5, name_ja: '旨味' },
-    ]);
+    expect(result.sake.brandId).toBe(1);
+    expect(result.sake.brewery.breweryId).toBe(10);
+    expect(result.sake.area.name).toBe('新潟県');
+    expect(result.flavorProfile).toEqual(chart);
+    // No brand↔tag junction in the canonical mirror — always empty.
+    expect(result.flavorTags).toEqual([]);
   });
 
-  it('returns flavor_profile: null when the Sake has no FlavorProfile row', async () => {
-    const db = fixtureDb([
-      { id: 2, name_romaji: 'NoProfile', profile: null, tags: [{ id: 3, name_ja: '辛口' }] },
-    ]);
-
-    const result = await getSakeDetails({ sake_id: 2 }, db);
-
+  it('returns flavorProfile: null when the brand has no FlavorChart', async () => {
+    const result = await getSakeDetails({ brandId: 2 }, fixtureDb([{ brand_id: 2, name: 'X', chart: null }]));
     expect(result.found).toBe(true);
     if (!result.found) throw new Error('expected found');
-    expect(result.flavor_profile).toBeNull();
-    // Tags still returned even when the profile is missing.
-    expect(result.flavor_tags).toEqual([{ id: 3, name_ja: '辛口' }]);
+    expect(result.flavorProfile).toBeNull();
   });
 
-  it('returns flavor_tags: [] when the Sake has no tags', async () => {
-    const db = fixtureDb([{ id: 3, name_romaji: 'NoTags', profile, tags: [] }]);
-
-    const result = await getSakeDetails({ sake_id: 3 }, db);
-
-    expect(result.found).toBe(true);
-    if (!result.found) throw new Error('expected found');
-    expect(result.flavor_tags).toEqual([]);
-    expect(result.flavor_profile).toEqual(profile);
-  });
-
-  it('returns { found: false, sake_id } for an unknown id (not an error)', async () => {
-    const db = fixtureDb([{ id: 1, name_romaji: 'Dassai', profile, tags: [] }]);
-
-    const result = await getSakeDetails({ sake_id: 99999 }, db);
-
-    expect(result).toEqual({ found: false, sake_id: 99999 });
-  });
-
-  it('coerces numeric FlavorProfile strings (pg numeric) into numbers', async () => {
-    // pg returns `numeric` columns as strings; the function must coerce them.
-    const db: Db = {
-      query: <R>(_sql: string, params?: unknown[]) => {
-        if ((params?.length ?? 0) === 1 && _sql.includes('flavor_profiles')) {
-          return Promise.resolve({
-            rows: [
-              {
-                id: 7,
-                name_ja: 's_ja',
-                name_romaji: 's',
-                brewery_id: 70,
-                brewery_name_ja: 'b_ja',
-                brewery_name_romaji: 'b',
-                prefecture_id: 15,
-                prefecture_name_ja: '新潟県',
-                prefecture_name_romaji: 'Niigata',
-                hanayaka: '0.8',
-                hojun: '0.6',
-                juko: '0.4',
-                odayaka: '0.3',
-                dry: '0.5',
-                keikai: '0.7',
-              },
-            ] as R[],
-          });
-        }
-        return Promise.resolve({ rows: [] as R[] });
-      },
+  it('coerces numeric-as-string FlavorChart columns to numbers', async () => {
+    const stub: Db = {
+      query: <R>() =>
+        Promise.resolve({
+          rows: [
+            {
+              brand_id: 7, name: 's', name_romaji: null, brewery_id: 70, brewery_name: 'b',
+              brewery_name_romaji: null, area_id: 15, area_name: '新潟県',
+              f1: '0.8', f2: '0.6', f3: '0.4', f4: '0.3', f5: '0.5', f6: '0.7',
+            },
+          ] as R[],
+        }),
     };
-
-    const result = await getSakeDetails({ sake_id: 7 }, db);
-    expect(result.found).toBe(true);
+    const result = await getSakeDetails({ brandId: 7 }, stub);
     if (!result.found) throw new Error('expected found');
-    expect(result.flavor_profile).toEqual(profile);
+    expect(result.flavorProfile).toEqual(chart);
+  });
+
+  it('returns { found: false, brandId } for an unknown id (not an error)', async () => {
+    const result = await getSakeDetails({ brandId: 99999 }, fixtureDb([{ brand_id: 1, name: 'A', chart }]));
+    expect(result).toEqual({ found: false, brandId: 99999 });
   });
 });

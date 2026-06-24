@@ -55,13 +55,20 @@ Selected at startup by `MCP_TRANSPORT` (default `stdio`):
 - `MCP_HTTP_PORT` (3030) / `MCP_HTTP_HOST` (0.0.0.0) / `MCP_HTTP_PATH` (/mcp) —
   HTTP mode only; ignored under stdio.
 
-### Expected database schema
+### Schema — canonical Sakenowa-API naming
 
-The server reads (never writes) the following tables: `prefectures`,
-`breweries`, `sakes`, `flavor_profiles`, `flavor_tags`, `sake_flavor_tags`,
-`rankings`. The full shape is documented in
-[`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). The schema expectations are
-part of the public contract.
+The tool SQL and Zod inputs/outputs use the **canonical Sakenowa-mirror** shape —
+the table/column names any Sakenowa-mirrored Postgres naturally has, verified
+against a real mirror (yawaragi's `pnpm ingest` Supabase project): `areas`
+(`area_id`, `name`), `brands` (`brand_id`, `name`, nullable `name_romaji`),
+`breweries` (`brewery_id`, …), `flavor_charts` (`brand_id`, `f1`–`f6`),
+`flavor_tags` (`tag_id`, `name`), `rankings` (`kind`, `area_id`, `rank`,
+`brand_id`, `score`). Tool inputs are camelCase (`brandId`, `areaId`, `topK`,
+`f1Min`…). Full audit: [`docs/specs/schema-audit-v0.1.1.md`](./docs/specs/schema-audit-v0.1.1.md).
+
+Known gap: the canonical mirror has **no brand↔tag junction**, so `get_sake_details`
+returns an empty `flavorTags` and `find_sakes_by_flavor`'s `tags` filter is a
+no-op until the association is mirrored.
 
 ### Not in this release
 

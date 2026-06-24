@@ -1,68 +1,46 @@
 import type { Sake } from './sake.js';
 
 /**
- * Canonical `Sake → Brewery → Prefecture` join, factored out because five of
- * the six v0.1.0 tools (search, details, similar, by-flavor, top-ranked) return
- * the same nested Sake shape and would otherwise each re-derive these JOINs and
- * the row→object mapping.
+ * Canonical `brands → breweries → areas` join (Sakenowa-mirror schema), factored
+ * out because most tools return the same nested Sake shape. Composable: callers
+ * splice extra columns onto {@link SAKE_COLUMNS} and extra joins after
+ * {@link SAKE_FROM}; the bundled {@link SAKE_SELECT_JOIN} is for simple callers.
  *
- * A thin SQL/mapping helper, deliberately NOT a repository or query builder. It
- * is exposed as composable pieces so callers that need *extra* columns or joins
- * (e.g. find_similar_sakes adds the six FlavorProfile columns + a cosine
- * expression and a `flavor_profiles` join) can splice them in:
- *
- *   `SELECT ${SAKE_COLUMNS}, <extra cols> FROM ${SAKE_FROM} JOIN <extra> ...`
- *
- * Callers that need nothing extra use {@link SAKE_SELECT_JOIN} directly and
- * append their own WHERE / ORDER BY / LIMIT. No bind placeholders are
- * introduced, so a caller's parameter numbering is unconstrained. The base
- * table is aliased `s` (sakes), the brewery `b`, the prefecture `p`. The
- * prefecture is the Brewery's prefecture (a Sake has no prefecture of its own).
- * Columns are hard-coded from docs/specs/v0.1.0.md "Expected DB schema"; a
- * column-remapping layer is a deferred v0.2 concern.
+ * Aliases: `s` = brands, `b` = breweries, `a` = areas. The area is the brewery's
+ * area. Columns are the canonical Sakenowa names; `name_romaji` is nullable
+ * (consumer enrichment). See `docs/specs/schema-audit-v0.1.1.md`.
  */
 
-/** Flat row shape produced by {@link SAKE_COLUMNS} / {@link SAKE_SELECT_JOIN}. */
+/** Flat row produced by {@link SAKE_COLUMNS}. */
 export interface SakeJoinRow {
-  id: number;
-  name_ja: string;
-  name_romaji: string;
+  brand_id: number;
+  name: string;
+  name_romaji: string | null;
   brewery_id: number;
-  brewery_name_ja: string;
-  brewery_name_romaji: string;
-  prefecture_id: number;
-  prefecture_name_ja: string;
-  prefecture_name_romaji: string;
+  brewery_name: string;
+  brewery_name_romaji: string | null;
+  area_id: number;
+  area_name: string;
 }
 
-/**
- * Aliased SELECT column list for the canonical Sake join — no leading `SELECT`,
- * no trailing comma — so callers can append further columns after it.
- */
+/** Aliased SELECT column list — no leading SELECT, no trailing comma. */
 export const SAKE_COLUMNS = `
-    s.id                  AS id,
-    s.name_ja             AS name_ja,
-    s.name_romaji         AS name_romaji,
-    b.id                  AS brewery_id,
-    b.name_ja             AS brewery_name_ja,
-    b.name_romaji         AS brewery_name_romaji,
-    p.id                  AS prefecture_id,
-    p.name_ja             AS prefecture_name_ja,
-    p.name_romaji         AS prefecture_name_romaji`;
+    s.brand_id        AS brand_id,
+    s.name            AS name,
+    s.name_romaji     AS name_romaji,
+    b.brewery_id      AS brewery_id,
+    b.name            AS brewery_name,
+    b.name_romaji     AS brewery_name_romaji,
+    a.area_id         AS area_id,
+    a.name            AS area_name`;
 
-/**
- * Table + JOIN clause for the canonical Sake join — no leading `FROM` keyword,
- * so callers can append further joins after it (`FROM ${SAKE_FROM} JOIN ...`).
- */
+/** Table + JOIN clause — no leading FROM. */
 export const SAKE_FROM = `
-  sakes s
-  JOIN breweries b   ON b.id = s.brewery_id
-  JOIN prefectures p ON p.id = b.prefecture_id`;
+  brands s
+  JOIN breweries b ON b.brewery_id = s.brewery_id
+  JOIN areas a     ON a.area_id = b.area_id`;
 
-/**
- * Complete `SELECT … FROM … JOIN …` for tools that need no extra columns or
- * joins. Append a `WHERE` / `ORDER BY` / `LIMIT` to finish the statement.
- */
+/** Complete `SELECT … FROM … JOIN …` for callers needing no extra columns/joins. */
 export const SAKE_SELECT_JOIN = `
   SELECT ${SAKE_COLUMNS}
   FROM ${SAKE_FROM}
@@ -71,18 +49,17 @@ export const SAKE_SELECT_JOIN = `
 /** Map one flat join row into the nested {@link Sake} shape. */
 export function mapSakeRow(row: SakeJoinRow): Sake {
   return {
-    id: row.id,
-    name_ja: row.name_ja,
-    name_romaji: row.name_romaji,
+    brandId: row.brand_id,
+    name: row.name,
+    nameRomaji: row.name_romaji,
     brewery: {
-      id: row.brewery_id,
-      name_ja: row.brewery_name_ja,
-      name_romaji: row.brewery_name_romaji,
+      breweryId: row.brewery_id,
+      name: row.brewery_name,
+      nameRomaji: row.brewery_name_romaji,
     },
-    prefecture: {
-      id: row.prefecture_id,
-      name_ja: row.prefecture_name_ja,
-      name_romaji: row.prefecture_name_romaji,
+    area: {
+      areaId: row.area_id,
+      name: row.area_name,
     },
   };
 }

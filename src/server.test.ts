@@ -41,115 +41,30 @@ function textOf(result: unknown): string {
 }
 
 describe('createServer tools/list', () => {
-  it('advertises list_prefectures with a domain-vocabulary description', async () => {
+  it('advertises every tool with a non-empty description and an outputSchema', async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
 
-    const listPrefectures = tools.find((t) => t.name === 'list_prefectures');
-    expect(listPrefectures).toBeDefined();
-
-    const description = listPrefectures?.description ?? '';
-    expect(description.length).toBeGreaterThan(0);
-    // Uses CONTEXT.md vocabulary: "Prefecture", not "area"/"region".
-    expect(description).toContain('Prefecture');
-    expect(description.toLowerCase()).not.toContain('area');
+    for (const tool of tools) {
+      expect((tool.description ?? '').length).toBeGreaterThan(0);
+      expect(tool.outputSchema).toBeDefined();
+    }
 
     await client.close();
   });
 
-  it('advertises search_sakes_by_name with a domain-vocabulary description', async () => {
+  it('uses canonical Sakenowa field names in tool descriptions', async () => {
     const client = await connectedClient();
     const { tools } = await client.listTools();
+    const desc = (name: string) => tools.find((t) => t.name === name)?.description ?? '';
 
-    const search = tools.find((t) => t.name === 'search_sakes_by_name');
-    expect(search).toBeDefined();
-    expect(search?.outputSchema).toBeDefined();
-
-    const description = search?.description ?? '';
-    expect(description.length).toBeGreaterThan(0);
-    // Uses CONTEXT.md vocabulary: "Sake", never "brand"/"label".
-    expect(description).toContain('Sake');
-    expect(description.toLowerCase()).not.toContain('brand');
-    expect(description.toLowerCase()).not.toContain('label');
-
-    await client.close();
-  });
-
-  it('advertises find_similar_sakes with FlavorProfile vocabulary (not "vector")', async () => {
-    const client = await connectedClient();
-    const { tools } = await client.listTools();
-
-    const findSimilar = tools.find((t) => t.name === 'find_similar_sakes');
-    expect(findSimilar).toBeDefined();
-    expect(findSimilar?.outputSchema).toBeDefined();
-
-    const description = findSimilar?.description ?? '';
-    // Uses CONTEXT.md vocabulary: "FlavorProfile", never "vector".
-    expect(description).toContain('FlavorProfile');
-    expect(description.toLowerCase()).not.toContain('vector');
-
-    await client.close();
-  });
-
-  it('advertises get_sake_details with FlavorProfile/FlavorTag vocabulary', async () => {
-    const client = await connectedClient();
-    const { tools } = await client.listTools();
-
-    const details = tools.find((t) => t.name === 'get_sake_details');
-    expect(details).toBeDefined();
-    expect(details?.outputSchema).toBeDefined();
-
-    const description = details?.description ?? '';
-    expect(description.length).toBeGreaterThan(0);
-    // Uses CONTEXT.md vocabulary. "brand_id" is the legitimate Sakenowa field
-    // name, but the colloquial standalone "brand"/"label" must not appear, and
-    // FlavorProfile must never be called a "vector".
-    expect(description).toContain('Sake');
-    expect(description).toContain('FlavorProfile');
-    expect(description).toContain('FlavorTag');
-    expect(description.toLowerCase()).not.toContain('label');
-    expect(description.toLowerCase()).not.toContain('vector');
-
-    await client.close();
-  });
-
-  it('advertises get_top_ranked with Ranking/Prefecture vocabulary', async () => {
-    const client = await connectedClient();
-    const { tools } = await client.listTools();
-
-    const topRanked = tools.find((t) => t.name === 'get_top_ranked');
-    expect(topRanked).toBeDefined();
-    expect(topRanked?.outputSchema).toBeDefined();
-
-    const description = topRanked?.description ?? '';
-    expect(description.length).toBeGreaterThan(0);
-    // Uses CONTEXT.md vocabulary: "Ranking"/"Prefecture", never "area".
-    expect(description).toContain('Ranking');
-    expect(description).toContain('Prefecture');
-    expect(description.toLowerCase()).not.toContain('area');
-
-    await client.close();
-  });
-
-  it('advertises find_sakes_by_flavor with FlavorProfile/FlavorTag/Prefecture vocabulary', async () => {
-    const client = await connectedClient();
-    const { tools } = await client.listTools();
-
-    const byFlavor = tools.find((t) => t.name === 'find_sakes_by_flavor');
-    expect(byFlavor).toBeDefined();
-    expect(byFlavor?.outputSchema).toBeDefined();
-
-    const description = byFlavor?.description ?? '';
-    expect(description.length).toBeGreaterThan(0);
-    // Uses CONTEXT.md vocabulary: Sake / FlavorProfile / FlavorTag / Prefecture,
-    // never "brand"/"label"/"vector"/"area".
-    expect(description).toContain('Sake');
-    expect(description).toContain('FlavorProfile');
-    expect(description).toContain('FlavorTag');
-    expect(description).toContain('Prefecture');
-    expect(description.toLowerCase()).not.toContain('label');
-    expect(description.toLowerCase()).not.toContain('vector');
-    expect(description.toLowerCase()).not.toContain('area');
+    // Canonical Sakenowa naming (areas / brandId / FlavorChart axes f1–f6), not
+    // the old prefectures / sake_id / romaji-axis vocabulary.
+    expect(desc('list_prefectures')).toContain('area');
+    expect(desc('get_sake_details')).toContain('brandId');
+    expect(desc('find_similar_sakes')).toContain('FlavorChart');
+    expect(desc('find_sakes_by_flavor')).toContain('f1');
+    expect(desc('get_top_ranked')).toContain('area');
 
     await client.close();
   });
@@ -176,8 +91,8 @@ describe('createServer tools/call (generic dispatch)', () => {
   it('dispatches a tool and returns the structured-content envelope', async () => {
     const client = await connectedClientWithDb(
       dbReturning([
-        { id: 1, name_ja: '北海道', name_romaji: 'Hokkaido' },
-        { id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' },
+        { area_id: 1, name: '北海道' },
+        { area_id: 47, name: '沖縄県' },
       ]),
     );
 
@@ -187,14 +102,14 @@ describe('createServer tools/call (generic dispatch)', () => {
     // structuredContent is keyed by the tool's structuredKey.
     expect(result.structuredContent).toEqual({
       prefectures: [
-        { id: 1, name_ja: '北海道', name_romaji: 'Hokkaido' },
-        { id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' },
+        { areaId: 1, name: '北海道' },
+        { areaId: 47, name: '沖縄県' },
       ],
     });
     // The text content mirrors the same result as JSON.
     expect(JSON.parse(textOf(result))).toEqual([
-      { id: 1, name_ja: '北海道', name_romaji: 'Hokkaido' },
-      { id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' },
+      { areaId: 1, name: '北海道' },
+      { areaId: 47, name: '沖縄県' },
     ]);
 
     await client.close();

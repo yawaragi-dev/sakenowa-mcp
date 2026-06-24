@@ -3,22 +3,18 @@ import { BrewerySchema } from './brewery.js';
 import { PrefectureSchema } from './prefecture.js';
 
 /**
- * Sake — a sake product line (銘柄, *meigara*) produced by a single Brewery
- * (see CONTEXT.md). Sakenowa calls this `brand`; this server renames it to Sake
- * to avoid colliding with the colloquial English "brand" (= the company).
- *
- * Each Sake carries its full Brewery and that Brewery's Prefecture so consumers
- * can disambiguate without a follow-up call — necessary because `name_romaji`
- * is not unique across Sakes (see CONTEXT.md "Same-romaji collisions"). The
- * nested `prefecture` is the Brewery's Prefecture, not a property of the Sake
- * itself.
+ * A sake product line — Sakenowa calls it a "brand" (`brands` table, PK
+ * `brand_id`). The canonical Sakenowa-mirror shape; v0.1.0 wrongly assumed a
+ * `sakes` table with `sake_id`/`name_ja`. `name` is the Sakenowa-published
+ * name; `nameRomaji` is nullable consumer enrichment. The nested `brewery` and
+ * `area` are the producing brewery and that brewery's area.
  */
 export const SakeSchema = z.object({
-  id: z.number().int(),
-  name_ja: z.string(),
-  name_romaji: z.string(),
+  brandId: z.number().int(),
+  name: z.string(),
+  nameRomaji: z.string().nullable(),
   brewery: BrewerySchema,
-  prefecture: PrefectureSchema,
+  area: PrefectureSchema,
 });
 
 export type Sake = z.infer<typeof SakeSchema>;

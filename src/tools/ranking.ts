@@ -1,24 +1,16 @@
 import { z } from 'zod';
 
 /**
- * Ranking — a single Sake's position-and-score within a popularity list, for a
- * specific month. Scope is either *overall* (global top 100) or a single
- * Prefecture (regional top N). A Sake has zero or more Rankings. The
- * `year_month` records which monthly snapshot the position came from; the mirror
- * stores only the latest snapshot, never historical. See CONTEXT.md "Ranking".
- *
- * `prefecture_id` is `null` when `scope` is `'overall'` and the owning
- * Prefecture's id when `scope` is `'prefecture'`. `score` is nullable because
- * the mirror's `score` column is `numeric` (nullable) per the spec's Expected DB
- * schema.
+ * A brand's position in a Sakenowa popularity ranking (`rankings` table).
+ * `kind` is `'overall'` or `'area'`; `areaId` is null for overall. There is no
+ * `year_month` column in the canonical mirror.
  */
 export const RankingSchema = z.object({
-  scope: z.enum(['overall', 'prefecture']),
-  prefecture_id: z.number().int().nullable(),
-  sake_id: z.number().int(),
+  kind: z.enum(['overall', 'area']),
+  areaId: z.number().int().nullable(),
+  brandId: z.number().int(),
   rank: z.number().int(),
-  score: z.number().nullable(),
-  year_month: z.string(),
+  score: z.number(),
 });
 
 export type Ranking = z.infer<typeof RankingSchema>;

@@ -65,7 +65,7 @@ describe('createMcpHttpServer (Streamable HTTP transport)', () => {
 
   it('dispatches a tool call over HTTP and returns the structured envelope', async () => {
     const { port, path } = await start(
-      dbReturning([{ id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' }]),
+      dbReturning([{ area_id: 47, name: '沖縄県' }]),
     );
 
     const res = await post(port, path, {
@@ -76,7 +76,7 @@ describe('createMcpHttpServer (Streamable HTTP transport)', () => {
     });
     const json = (await res.json()) as { result: { structuredContent: unknown } };
     expect(json.result.structuredContent).toEqual({
-      prefectures: [{ id: 47, name_ja: '沖縄県', name_romaji: 'Okinawa' }],
+      prefectures: [{ areaId: 47, name: '沖縄県' }],
     });
   });
 

@@ -2,6 +2,8 @@
 
 A Model Context Protocol server that turns well-defined queries over a Sakenowa-mirrored Postgres into MCP tool calls. This document defines the domain language used in code, schemas, and tool descriptions.
 
+> **⚠️ Superseded on the wire by canonical Sakenowa-API naming (v0.1.x).** The integration against a real Sakenowa mirror showed the tools must speak the Sakenowa API's own shape, not the domain rename below. The actual SQL + tool inputs/outputs use `areas`/`area_id`, `brands`/`brand_id`, `flavor_charts`/`f1..f6`, `tag_id`, `rankings`/`kind`, camelCase inputs (`brandId`, `areaId`, `topK`, `f1Min`…). The authoritative schema reference is [`docs/specs/schema-audit-v0.1.1.md`](./docs/specs/schema-audit-v0.1.1.md). The glossary below is retained as the *conceptual* model (Sake = brand, Prefecture = area, FlavorProfile = flavor_charts f1..f6, FlavorAxis labels = display only), but is no longer the wire contract.
+
 ## Language
 
 **Sake**:

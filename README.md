@@ -10,16 +10,16 @@ The server is **read-only**, **stateless**, and intentionally domain-pure — no
 
 ## What's in v0.1.0
 
-Six MCP tools over the Sakenowa data shape:
+Six MCP tools over the canonical Sakenowa data shape (`areas`, `brands`, `flavor_charts`, …):
 
-- `list_prefectures` — Japan's 47 prefectures.
-- `search_sakes_by_name` — resolve a free-text name (romaji or kanji) to one or more Sake records.
-- `get_sake_details` — full record for one Sake, including its 6-axis flavor profile, tags, brewery, and prefecture.
-- `find_similar_sakes` — cosine similarity over the 6-axis flavor profile.
-- `find_sakes_by_flavor` — filter by axis ranges, tag membership, and / or prefecture.
-- `get_top_ranked` — latest overall or per-prefecture popularity ranking.
+- `list_prefectures` — Japan's areas (prefectures) as `{ areaId, name }`.
+- `search_sakes_by_name` — resolve a free-text name (romaji or Japanese) to brand records.
+- `get_sake_details` — full record for one brand by `brandId`: its 6-axis FlavorChart (`f1`–`f6`), brewery, and area. (Per-brand flavor tags are not yet backed by the canonical mirror.)
+- `find_similar_sakes` — cosine similarity over the 6-axis FlavorChart (`brandId`, `topK`).
+- `find_sakes_by_flavor` — filter by axis ranges (`f1Min`/`f1Max` … `f6Min`/`f6Max`) and / or `areaId`.
+- `get_top_ranked` — latest overall or per-area popularity ranking (`scope: 'overall' | 'area'`, `areaId`).
 
-Full input / output shapes and SQL intent: [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md).
+Full input / output shapes and the expected DB schema: [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). The canonical schema and how it was derived: [`docs/specs/schema-audit-v0.1.1.md`](./docs/specs/schema-audit-v0.1.1.md).
 
 ## Use
 

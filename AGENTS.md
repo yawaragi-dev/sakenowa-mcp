@@ -13,7 +13,7 @@ A small, focused MCP server with one job: turn well-defined Sakenowa queries int
 - **Transport:** stdio (default) or Streamable HTTP, selected by `MCP_TRANSPORT`. stdio is for Claude Desktop / IDE consumers; HTTP is for consumers that can't keep a child process alive. See `docs/specs/v0.1.0.md`.
 - **Connection:** consumer provides `DATABASE_URL` to a Postgres that contains a Sakenowa-mirrored schema. This repo does not run its own ingest — see `docs/specs/v0.1.0.md`.
 - **Read-only.** No mutations, no writes, no migrations shipped with the server. The schema is owned by whoever ingested the data.
-- **Domain glossary** lives in `CONTEXT.md`. Use those names in code (Sake, Brewery, Prefecture, FlavorProfile, FlavorAxis, FlavorTag, Ranking).
+- **Schema is canonical Sakenowa-API.** The tool SQL and the wire contract use the table/column names a Sakenowa-mirrored Postgres actually has — `areas`/`area_id`, `brands`/`brand_id`, `breweries`/`brewery_id`, `flavor_charts`/`f1..f6`, `flavor_tags`/`tag_id`, `rankings`/`kind`/`area_id` — with camelCase tool inputs (`brandId`, `areaId`, `topK`, `f1Min`…). Authoritative reference: `docs/specs/schema-audit-v0.1.1.md`. (`CONTEXT.md` describes an earlier domain rename — Sake/Prefecture/FlavorProfile — that the wire contract no longer uses; treat the audit + code as the source of truth.) NOTE: the canonical mirror has no brand↔tag junction, so per-brand flavor tags are currently unavailable.
 - **The active spec** for the current release lives under `docs/specs/`. v0.1.0 is `docs/specs/v0.1.0.md`.
 
 ## What this project is NOT

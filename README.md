@@ -21,6 +21,12 @@ Six MCP tools over the canonical Sakenowa data shape (`areas`, `brands`, `flavor
 
 Full input / output shapes and the expected DB schema: [`docs/specs/v0.1.0.md`](./docs/specs/v0.1.0.md). The canonical schema and how it was derived: [`docs/specs/schema-audit-v0.1.1.md`](./docs/specs/schema-audit-v0.1.1.md).
 
+### Naming & schema notes
+
+- **Tool inputs and JSON outputs are camelCase** (`brandId`, `areaId`, `topK`, `f1Min`, `nameRomaji`) — an LLM-friendly API surface. The **database columns are snake_case** (`brand_id`, `area_id`, `name_romaji`) — Sakenowa's own shape. The two don't have to match; the server maps between them.
+- **`name_romaji` is optional / consumer-provided.** Sakenowa's API publishes only Japanese names; romaji is an enrichment column a consumer adds (e.g. via an LLM step). It is nullable: tools return `nameRomaji: null` when absent, and `search_sakes_by_name` simply won't match romaji queries on an un-enriched mirror (it still matches the Japanese `name`).
+- **`flavorProfile` is nullable** — a brand with no `flavor_charts` row returns `flavorProfile: null` (a valid result, not an error).
+
 ## Use
 
 ```bash
@@ -109,7 +115,7 @@ At the Sakenowa scale (~5k sakes, 47 prefectures, 117 tags) every query is a sma
 | `sake_flavor_tags(tag_id)` | the `find_sakes_by_flavor` tag-intersection (the PK `(sake_id, tag_id)` already covers `sake_id` lookups, not `tag_id`) |
 | `rankings(scope, prefecture_id, rank)` | `get_top_ranked`'s filter + order |
 | `flavor_profiles(sake_id)` | already the primary key per the schema; covers `find_similar_sakes` and detail joins |
-| `pg_trgm` GIN on `sakes(name_ja, name_romaji)` *(optional)* | `search_sakes_by_name` only if it must scale past a few thousand rows (it uses substring `ILIKE`, which can't use a btree index) |
+| `pg_trgm` GIN on `brands(name, name_romaji)` *(optional)* | `search_sakes_by_name` only if it must scale past a few thousand rows (it uses substring `ILIKE`, which can't use a btree index) |
 
 ## Configuration
 

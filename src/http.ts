@@ -49,9 +49,22 @@ async function handleRequest(
     return;
   }
 
-  try {
-    const body = req.method === 'POST' ? await readJsonBody(req) : undefined;
+  // Parse a POST body up front so a malformed request reads as a client error
+  // (400 / JSON-RPC parse error) rather than a server fault.
+  let body: unknown;
+  if (req.method === 'POST') {
+    const raw = await readRawBody(req);
+    if (raw !== '') {
+      try {
+        body = JSON.parse(raw);
+      } catch {
+        respondError(res, 400, -32700, 'Parse error: request body is not valid JSON');
+        return;
+      }
+    }
+  }
 
+  try {
     const transport = new StreamableHTTPServerTransport({ enableJsonResponse: true });
     const server = makeMcpServer();
     res.on('close', () => {
@@ -70,17 +83,13 @@ async function handleRequest(
   }
 }
 
-/** Buffer and JSON-parse the request body; `undefined` for an empty body. */
-async function readJsonBody(req: IncomingMessage): Promise<unknown> {
+/** Buffer the request body as a UTF-8 string. */
+async function readRawBody(req: IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
   for await (const chunk of req) {
     chunks.push(chunk as Buffer);
   }
-  const raw = Buffer.concat(chunks).toString('utf8');
-  if (raw === '') {
-    return undefined;
-  }
-  return JSON.parse(raw) as unknown;
+  return Buffer.concat(chunks).toString('utf8');
 }
 
 /** Write a JSON-RPC error envelope with the given HTTP status. */

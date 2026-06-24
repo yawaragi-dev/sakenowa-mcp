@@ -88,4 +88,16 @@ describe('createMcpHttpServer (Streamable HTTP transport)', () => {
     const json = (await res.json()) as { error: { message: string } };
     expect(json.error.message).toContain('Not found');
   });
+  it('returns a 400 JSON-RPC parse error for a malformed body', async () => {
+    const { port, path } = await start(dbReturning([]));
+    const res = await fetch(`http://127.0.0.1:${String(port)}${path}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream' },
+      body: '{ not json',
+    });
+    expect(res.status).toBe(400);
+    const json = (await res.json()) as { error: { code: number; message: string } };
+    expect(json.error.code).toBe(-32700);
+    expect(json.error.message).toContain('Parse error');
+  });
 });

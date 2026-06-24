@@ -66,9 +66,21 @@ against a real mirror (yawaragi's `pnpm ingest` Supabase project): `areas`
 `brand_id`, `score`). Tool inputs are camelCase (`brandId`, `areaId`, `topK`,
 `f1Min`…). Full audit: [`docs/specs/schema-audit-v0.1.1.md`](./docs/specs/schema-audit-v0.1.1.md).
 
-Known gap: the canonical mirror has **no brand↔tag junction**, so `get_sake_details`
-returns an empty `flavorTags` and `find_sakes_by_flavor`'s `tags` filter is a
-no-op until the association is mirrored.
+### Limitations / known gaps (v0.1.0)
+
+- **Flavor tags are not backed by the canonical mirror.** There is no brand↔tag
+  junction table, so `get_sake_details.flavorTags` is always `[]` and
+  `find_sakes_by_flavor`'s `tags` filter is a no-op (accepted, ignored). Both
+  tool descriptions say so.
+- **Rankings are latest-snapshot only.** The canonical `rankings` table retains
+  no history, so `get_top_ranked` has no `year_month` and returns only the
+  current snapshot.
+- **`flavorProfile` is nullable.** A brand with no `flavor_charts` row returns
+  `flavorProfile: null` — a valid result, not an error.
+- **`name_romaji` is consumer-provided and may be null.** Sakenowa publishes only
+  Japanese names; romaji is an enrichment column. `search_sakes_by_name` matches
+  romaji only on a mirror that has populated it (it always matches the Japanese
+  `name`).
 
 ### Not in this release
 

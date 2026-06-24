@@ -10,7 +10,7 @@ A small, focused MCP server with one job: turn well-defined Sakenowa queries int
 
 - **Stack:** TypeScript strict, `@modelcontextprotocol/sdk`, `pg` (or a thin wrapper) for Postgres, Zod for runtime validation, Vitest for tests.
 - **Package manager:** pnpm for development. The published package itself is consumer-agnostic — npm / yarn / pnpm users all install it the same way.
-- **Transport:** stdio (default) or Streamable HTTP, selected by `MCP_TRANSPORT` (added in v0.2.0). stdio is for Claude Desktop / IDE consumers; HTTP is for consumers that can't keep a child process alive. See `docs/specs/v0.2.0.md`.
+- **Transport:** stdio (default) or Streamable HTTP, selected by `MCP_TRANSPORT`. stdio is for Claude Desktop / IDE consumers; HTTP is for consumers that can't keep a child process alive. See `docs/specs/v0.1.0.md`.
 - **Connection:** consumer provides `DATABASE_URL` to a Postgres that contains a Sakenowa-mirrored schema. This repo does not run its own ingest — see `docs/specs/v0.1.0.md`.
 - **Read-only.** No mutations, no writes, no migrations shipped with the server. The schema is owned by whoever ingested the data.
 - **Domain glossary** lives in `CONTEXT.md`. Use those names in code (Sake, Brewery, Prefecture, FlavorProfile, FlavorAxis, FlavorTag, Ranking).
@@ -18,7 +18,7 @@ A small, focused MCP server with one job: turn well-defined Sakenowa queries int
 
 ## What this project is NOT
 
-- Not a Next.js app, not a UI, not a web service in the application sense. (As of v0.2.0 it can *speak* MCP over HTTP, but it's still a transport for the same read-only tools — no routes, no UI, no business logic, no auth.)
+- Not a Next.js app, not a UI, not a web service in the application sense. (It can *speak* MCP over HTTP, but it's still a transport for the same read-only tools — no routes, no UI, no business logic, no auth.)
 - Not coupled to any specific consumer. There is no `@yawaragi/*` import allowed here.
 - Not an LLM application. No `@anthropic-ai/*`, no `ai` (Vercel AI SDK), no model calls. Tools return Sakenowa data; consumers decide what to do with it.
 - Not a hand-curated heuristic engine. Cross-beverage mappings, taste-profile inferences, recommendation weighting, prompt scaffolding — all live in the consuming app, never here.

@@ -1,6 +1,6 @@
 {
   "name": "@yawaragi/sakenowa-mcp",
-  "version": "0.2.0",
+  "version": "0.1.0",
   "description": "Model Context Protocol server exposing read-only tools over a Sakenowa-mirrored Postgres of Japanese sake data.",
   "keywords": [
     "mcp",

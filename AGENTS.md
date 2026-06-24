@@ -10,15 +10,15 @@ A small, focused MCP server with one job: turn well-defined Sakenowa queries int
 
 - **Stack:** TypeScript strict, `@modelcontextprotocol/sdk`, `pg` (or a thin wrapper) for Postgres, Zod for runtime validation, Vitest for tests.
 - **Package manager:** pnpm for development. The published package itself is consumer-agnostic — npm / yarn / pnpm users all install it the same way.
-- **Transport:** stdio for v0.1.0. (Streamable HTTP is a v0.2+ concern.)
+- **Transport:** stdio (default) or Streamable HTTP, selected by `MCP_TRANSPORT`. stdio is for Claude Desktop / IDE consumers; HTTP is for consumers that can't keep a child process alive. See `docs/specs/v0.1.0.md`.
 - **Connection:** consumer provides `DATABASE_URL` to a Postgres that contains a Sakenowa-mirrored schema. This repo does not run its own ingest — see `docs/specs/v0.1.0.md`.
 - **Read-only.** No mutations, no writes, no migrations shipped with the server. The schema is owned by whoever ingested the data.
-- **Domain glossary** lives in `CONTEXT.md`. Use those names in code (Sake, Brewery, Prefecture, FlavorProfile, FlavorAxis, FlavorTag, Ranking).
+- **Schema is canonical Sakenowa-API.** The tool SQL and the wire contract use the table/column names a Sakenowa-mirrored Postgres actually has — `areas`/`area_id`, `brands`/`brand_id`, `breweries`/`brewery_id`, `flavor_charts`/`f1..f6`, `flavor_tags`/`tag_id`, `rankings`/`kind`/`area_id` — with camelCase tool inputs (`brandId`, `areaId`, `topK`, `f1Min`…). Authoritative reference: `docs/specs/schema-audit-v0.1.1.md`. (`CONTEXT.md` describes an earlier domain rename — Sake/Prefecture/FlavorProfile — that the wire contract no longer uses; treat the audit + code as the source of truth.) NOTE: the canonical mirror has no brand↔tag junction, so per-brand flavor tags are currently unavailable.
 - **The active spec** for the current release lives under `docs/specs/`. v0.1.0 is `docs/specs/v0.1.0.md`.
 
 ## What this project is NOT
 
-- Not a Next.js app, not a UI, not a web service in the HTTP sense.
+- Not a Next.js app, not a UI, not a web service in the application sense. (It can *speak* MCP over HTTP, but it's still a transport for the same read-only tools — no routes, no UI, no business logic, no auth.)
 - Not coupled to any specific consumer. There is no `@yawaragi/*` import allowed here.
 - Not an LLM application. No `@anthropic-ai/*`, no `ai` (Vercel AI SDK), no model calls. Tools return Sakenowa data; consumers decide what to do with it.
 - Not a hand-curated heuristic engine. Cross-beverage mappings, taste-profile inferences, recommendation weighting, prompt scaffolding — all live in the consuming app, never here.

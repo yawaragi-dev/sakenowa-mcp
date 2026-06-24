@@ -1,84 +1,58 @@
 import { z } from 'zod';
 
 /**
- * The six FlavorAxes of a FlavorProfile, in canonical order. Romaji names are
- * the canonical identifiers (never `f1..f6`, which is a Sakenowa storage
- * detail). See CONTEXT.md "6-axis vocabulary".
+ * The six FlavorChart axes, in canonical Sakenowa order. Sakenowa's
+ * `flavor_charts` table stores them as `f1`–`f6` (NUMERIC in [0,1]); the romaji
+ * labels (hanayaka…keikai) are display-only and not used on the wire.
  */
-export const FLAVOR_AXES = [
-  'hanayaka',
-  'hojun',
-  'juko',
-  'odayaka',
-  'dry',
-  'keikai',
-] as const;
+export const FLAVOR_AXES = ['f1', 'f2', 'f3', 'f4', 'f5', 'f6'] as const;
 
 export type FlavorAxis = (typeof FLAVOR_AXES)[number];
 
 /**
- * FlavorProfile — the continuous 6-tuple attached to a Sake along the Sakenowa
- * aroma/body/dryness axes (`hanayaka`, `hojun`, `juko`, `odayaka`, `dry`,
- * `keikai`). Each axis is a float; Sakenowa publishes them in `[0, 1]`. Used
- * for similarity ("sake similar to this one"), NOT for hard filters like
- * "sweet" or "umami" (those are FlavorTags). See CONTEXT.md "FlavorProfile".
+ * FlavorChart — the 6-axis flavor vector attached to a brand in Sakenowa's
+ * `flavor_charts` table. Each axis is a float in `[0, 1]`.
  */
 export const FlavorProfileSchema = z.object({
-  hanayaka: z.number(),
-  hojun: z.number(),
-  juko: z.number(),
-  odayaka: z.number(),
-  dry: z.number(),
-  keikai: z.number(),
+  f1: z.number(),
+  f2: z.number(),
+  f3: z.number(),
+  f4: z.number(),
+  f5: z.number(),
+  f6: z.number(),
 });
 
 export type FlavorProfile = z.infer<typeof FlavorProfileSchema>;
 
 /**
- * SQL select-list fragment for the six FlavorProfile axes, qualified to the
- * `flavor_profiles` alias `fp`. Compose after a base column list:
- *   `SELECT ${SAKE_COLUMNS}, ${FLAVOR_PROFILE_COLUMNS} FROM … LEFT JOIN flavor_profiles fp …`
- * Each axis returns under its own romaji name, so a row satisfies
- * {@link FlavorProfileColumns}.
+ * SQL select-list fragment for the six axes, qualified to the `flavor_charts`
+ * alias `fc`. Compose after a base column list.
  */
-export const FLAVOR_PROFILE_COLUMNS = FLAVOR_AXES.map((axis) => `fp.${axis}`).join(', ');
+export const FLAVOR_PROFILE_COLUMNS = FLAVOR_AXES.map((axis) => `fc.${axis}`).join(', ');
 
-/**
- * The six axis columns as they arrive over `pg`: a `numeric` column comes back
- * as a string, and a LEFT JOIN that matched no `flavor_profiles` row leaves
- * every axis `null`. {@link mapFlavorProfile} / {@link coerceFlavorProfile}
- * normalise both representations.
- */
+/** The six axis columns as they arrive over `pg` (numeric-as-string, or null on a LEFT JOIN miss). */
 export interface FlavorProfileColumns {
-  hanayaka: number | string | null;
-  hojun: number | string | null;
-  juko: number | string | null;
-  odayaka: number | string | null;
-  dry: number | string | null;
-  keikai: number | string | null;
+  f1: number | string | null;
+  f2: number | string | null;
+  f3: number | string | null;
+  f4: number | string | null;
+  f5: number | string | null;
+  f6: number | string | null;
 }
 
-/**
- * Coerce the six axis columns into a {@link FlavorProfile}, turning pg's
- * `numeric`-as-string into the numbers the schema requires. Assumes the
- * FlavorProfile is present — use {@link mapFlavorProfile} when it may be absent.
- */
+/** Coerce the six axis columns into a {@link FlavorProfile} (assumes present). */
 export function coerceFlavorProfile(row: FlavorProfileColumns): FlavorProfile {
   return {
-    hanayaka: Number(row.hanayaka),
-    hojun: Number(row.hojun),
-    juko: Number(row.juko),
-    odayaka: Number(row.odayaka),
-    dry: Number(row.dry),
-    keikai: Number(row.keikai),
+    f1: Number(row.f1),
+    f2: Number(row.f2),
+    f3: Number(row.f3),
+    f4: Number(row.f4),
+    f5: Number(row.f5),
+    f6: Number(row.f6),
   };
 }
 
-/**
- * Map the six axis columns to a {@link FlavorProfile}, or `null` when the Sake
- * has no FlavorProfile. A LEFT JOIN leaves every axis `null` together, so a
- * `null` first axis signals an absent profile.
- */
+/** Map the six axis columns to a {@link FlavorProfile}, or `null` when absent (LEFT JOIN leaves all axes null). */
 export function mapFlavorProfile(row: FlavorProfileColumns): FlavorProfile | null {
-  return row.hanayaka === null ? null : coerceFlavorProfile(row);
+  return row.f1 === null ? null : coerceFlavorProfile(row);
 }

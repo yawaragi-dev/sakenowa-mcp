@@ -1,7 +1,7 @@
 {
   "name": "@yawaragi/sakenowa-mcp",
-  "version": "0.0.1",
-  "description": "Model Context Protocol server for Sakenowa sake data. In development.",
+  "version": "0.1.0",
+  "description": "Model Context Protocol server exposing read-only tools over a Sakenowa-mirrored Postgres of Japanese sake data.",
   "keywords": [
     "mcp",
     "model-context-protocol",
@@ -35,6 +35,7 @@
   "scripts": {
     "dev": "tsx src/index.ts",
     "build": "tsc -p tsconfig.build.json",
+    "prepack": "pnpm build",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run --exclude '**/*.integration.test.ts'",

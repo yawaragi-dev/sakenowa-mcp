@@ -1,18 +1,14 @@
 import { z } from 'zod';
 
 /**
- * Prefecture — a Japanese administrative region, one of the 47 prefectures
- * (e.g. Niigata, Yamaguchi). Sakenowa calls this `area`; this server renames
- * it to Prefecture per CONTEXT.md.
- *
- * `name_ja` is the original Japanese (source of truth); `name_romaji` is a
- * Latin-alphabet transliteration produced by the consumer's ingest, returned
- * as-is.
+ * A Japanese administrative region — one of Sakenowa's `areas` (the canonical
+ * Sakenowa-mirror table; v0.1.0 wrongly assumed a `prefectures` table). Sakenowa
+ * publishes only the Japanese `name`; there is no romaji for areas.
+ * `areaId = 0` is the "その他" (Other) sentinel and is excluded from results.
  */
 export const PrefectureSchema = z.object({
-  id: z.number().int(),
-  name_ja: z.string(),
-  name_romaji: z.string(),
+  areaId: z.number().int(),
+  name: z.string(),
 });
 
 export type Prefecture = z.infer<typeof PrefectureSchema>;

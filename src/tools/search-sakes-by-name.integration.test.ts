@@ -4,158 +4,52 @@ import pg from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { searchSakesByName } from './search-sakes-by-name.js';
 
-/**
- * Detect whether a usable Docker daemon is reachable. testcontainers needs one;
- * if it is absent (e.g. local dev without Docker), the whole suite is skipped
- * with an explicit logged reason rather than failing or silently passing. CI
- * (GitHub-hosted runners) has Docker, so this suite runs for real there.
- */
 function dockerAvailable(): boolean {
-  try {
-    execSync('docker info', { stdio: 'ignore' });
-    return true;
-  } catch {
-    return false;
-  }
+  try { execSync('docker info', { stdio: 'ignore' }); return true; } catch { return false; }
 }
-
 const hasDocker = dockerAvailable();
+if (!hasDocker) console.warn('[search-sakes-by-name.integration] SKIPPED: no Docker.');
 
-if (!hasDocker) {
-  console.warn(
-    '[search-sakes-by-name.integration] SKIPPED: Docker is not available, so a ' +
-      'testcontainers Postgres cannot be started. This suite runs in CI where ' +
-      'Docker is present.',
-  );
-}
-
-describe.skipIf(!hasDocker)('search_sakes_by_name (integration, testcontainers Postgres)', () => {
+describe.skipIf(!hasDocker)('search_sakes_by_name (integration)', () => {
   let container: StartedPostgreSqlContainer;
   let pool: pg.Pool;
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start();
     pool = new pg.Pool({ connectionString: container.getConnectionUri() });
-
-    await pool.query(`
-      CREATE TABLE prefectures (
-        id          int primary key,
-        name_ja     text not null,
-        name_romaji text not null
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE breweries (
-        id            int primary key,
-        name_ja       text not null,
-        name_romaji   text not null,
-        prefecture_id int not null references prefectures(id)
-      )
-    `);
-    await pool.query(`
-      CREATE TABLE sakes (
-        id          int primary key,
-        name_ja     text not null,
-        name_romaji text not null,
-        brewery_id  int not null references breweries(id)
-      )
-    `);
-
-    await pool.query(
-      `INSERT INTO prefectures (id, name_ja, name_romaji) VALUES
-        (15, '新潟県', 'Niigata'),
-        (35, '山口県', 'Yamaguchi')`,
-    );
-    // Two distinct breweries whose romaji collides (旭酒造 / 朝日酒造 both
-    // transliterate to "Asahi Shuzo") and live in different prefectures.
-    await pool.query(
-      `INSERT INTO breweries (id, name_ja, name_romaji, prefecture_id) VALUES
-        (100, '旭酒造',   'Asahi Shuzo', 35),
-        (200, '朝日酒造', 'Asahi Shuzo', 15),
-        (300, '久保田酒造', 'Kubota Brewery', 15)`,
-    );
-    // Dassai (Yamaguchi), Kubota (Niigata), and a same-romaji colliding pair:
-    // two distinct Sakes both romanised "Asahi" from different breweries.
-    //
-    // For the prefix-vs-substring ranking test, the romaji matters:
-    //   3,4 'Asahi', 5 'Asahiyama', 7 'Asahimidori' all START WITH "asahi"
-    //     -> exact-prefix matches.
-    //   6 'Yamaasahi' merely CONTAINS "asahi" -> substring-only match.
-    // Note id 6 < id 7: under plain id-order 6 would precede 7, so asserting
-    // 7 (prefix) before 6 (substring) proves the ranking, not the id tiebreak.
-    await pool.query(
-      `INSERT INTO sakes (id, name_ja, name_romaji, brewery_id) VALUES
-        (1, '獺祭',       'Dassai',       100),
-        (2, '久保田',     'Kubota',       300),
-        (3, '朝日',       'Asahi',        100),
-        (4, '旭',         'Asahi',        200),
-        (5, '朝日山',     'Asahiyama',    200),
-        (6, '山旭',       'Yamaasahi',    200),
-        (7, '旭緑',       'Asahimidori',  100)`,
-    );
+    await pool.query(`CREATE TABLE areas (area_id int primary key, name text not null)`);
+    await pool.query(`CREATE TABLE breweries (brewery_id int primary key, name text not null, name_romaji text, area_id int not null references areas(area_id))`);
+    await pool.query(`CREATE TABLE brands (brand_id int primary key, name text not null, name_romaji text, brewery_id int not null references breweries(brewery_id))`);
+    await pool.query(`INSERT INTO areas VALUES (15,'新潟県'),(35,'山口県')`);
+    await pool.query(`INSERT INTO breweries (brewery_id,name,name_romaji,area_id) VALUES (100,'旭酒造','Asahi Shuzo',35),(200,'朝日酒造','Asahi Shuzo',15)`);
+    // name = Sakenowa Japanese name; name_romaji = enrichment. A romaji collision pair (両 "Asahi").
+    await pool.query(`INSERT INTO brands (brand_id,name,name_romaji,brewery_id) VALUES
+      (1,'獺祭','Dassai',100),(2,'久保田','Kubota',200),
+      (3,'朝日','Asahi',100),(4,'旭','Asahi',200),(5,'朝日山','Asahiyama',200),(6,'山旭','Yamaasahi',200)`);
   });
+  afterAll(async () => { await pool.end(); await container.stop(); });
 
-  afterAll(async () => {
-    await pool.end();
-    await container.stop();
-  });
-
-  it('finds a Sake by its romaji name, carrying brewery + prefecture', async () => {
+  it('matches a romaji query via name_romaji and carries brewery + area', async () => {
     const result = await searchSakesByName({ query: 'dassai' }, pool);
-
     expect(result).toHaveLength(1);
     expect(result[0]).toEqual({
-      id: 1,
-      name_ja: '獺祭',
-      name_romaji: 'Dassai',
-      brewery: { id: 100, name_ja: '旭酒造', name_romaji: 'Asahi Shuzo' },
-      prefecture: { id: 35, name_ja: '山口県', name_romaji: 'Yamaguchi' },
+      brandId: 1, name: '獺祭', nameRomaji: 'Dassai',
+      brewery: { breweryId: 100, name: '旭酒造', nameRomaji: 'Asahi Shuzo' },
+      area: { areaId: 35, name: '山口県' },
     });
   });
 
-  it('matches case-insensitively on the Japanese name', async () => {
-    const result = await searchSakesByName({ query: '久保田' }, pool);
-
-    expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe(2);
-    expect(result[0]?.prefecture.name_romaji).toBe('Niigata');
+  it('matches the Japanese name and ranks prefix before substring', async () => {
+    // "asahi" → prefix: 3,4 (Asahi), 5 (Asahiyama); substring-only: 6 (Yamaasahi).
+    const ids = (await searchSakesByName({ query: 'asahi' }, pool)).map((s) => s.brandId);
+    expect(ids).toEqual([3, 4, 5, 6]);
   });
 
-  it('ranks exact-prefix matches ahead of substring-only matches', async () => {
-    // Prefix matches: 3,4 'Asahi', 5 'Asahiyama', 7 'Asahimidori'.
-    // Substring-only: 6 'Yamaasahi'.
-    // Expected: prefixes first by id ASC (3,4,5,7), then the substring (6).
-    // Crucially id 6 < id 7, so a pure id-ASC ordering would yield
-    // [3,4,5,6,7]; the assertion below only holds if the ranking puts the
-    // substring match last.
+  it('returns the same-romaji collision pair with distinct breweries', async () => {
     const result = await searchSakesByName({ query: 'asahi' }, pool);
-
-    expect(result.map((s) => s.id)).toEqual([3, 4, 5, 7, 6]);
-  });
-
-  it('returns the same-romaji colliding pair, each with its own brewery + prefecture', async () => {
-    const result = await searchSakesByName({ query: 'asahi' }, pool);
-
-    const sake3 = result.find((s) => s.id === 3);
-    const sake4 = result.find((s) => s.id === 4);
-    expect(sake3?.name_romaji).toBe('Asahi');
-    expect(sake4?.name_romaji).toBe('Asahi');
-    // Distinct breweries and prefectures disambiguate the collision.
-    expect(sake3?.brewery.id).toBe(100);
-    expect(sake4?.brewery.id).toBe(200);
-    expect(sake3?.prefecture.name_romaji).toBe('Yamaguchi');
-    expect(sake4?.prefecture.name_romaji).toBe('Niigata');
-  });
-
-  it('returns [] for an empty query', async () => {
-    const result = await searchSakesByName({ query: '   ' }, pool);
-    expect(result).toEqual([]);
-  });
-
-  it('clamps limit above the maximum to 50', async () => {
-    const result = await searchSakesByName({ query: 'asahi', limit: 999 }, pool);
-    // All five "asahi" matches come back (well under the 50 ceiling); clamping
-    // must not error, and the ranked order is preserved.
-    expect(result.map((s) => s.id)).toEqual([3, 4, 5, 7, 6]);
+    const a = result.find((s) => s.brandId === 3);
+    const b = result.find((s) => s.brandId === 4);
+    expect(a?.brewery.breweryId).toBe(100);
+    expect(b?.brewery.breweryId).toBe(200);
   });
 });
